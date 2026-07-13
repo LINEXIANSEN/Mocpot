@@ -12,18 +12,12 @@
 		A1000003 /* PlayerViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000003 /* PlayerViewModel.swift */; };
 		A1000005 /* VRPlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000005 /* VRPlayerView.swift */; };
 		A1000006 /* ThreeDPlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000006 /* ThreeDPlayerView.swift */; };
-		A1000007 /* PlayerControlsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000007 /* PlayerControlsView.swift */; };
-		A1000008 /* PlaylistView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000008 /* PlaylistView.swift */; };
-		A1000009 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000009 /* SettingsView.swift */; };
-		A100000A /* MetalRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000A /* MetalRenderer.swift */; };
-		A100000B /* VideoEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000B /* VideoEngine.swift */; };
-		A100000C /* AudioPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000C /* AudioPlayer.swift */; };
-		A100000D /* PlaylistManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000D /* PlaylistManager.swift */; };
-		A100000E /* MenuBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000E /* MenuBar.swift */; };
-		A100000F /* KeyboardShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000F /* KeyboardShortcuts.swift */; };
-		A1000010 /* VideoInfoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000010 /* VideoInfoView.swift */; };
-		A1000012 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A2000012 /* Assets.xcassets */; };
+		A1000018 /* PlaylistView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000018 /* PlaylistView.swift */; };
+		A1000019 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000019 /* SettingsView.swift */; };
+		A100001A /* VideoInfoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200001A /* VideoInfoView.swift */; };
+		A100001B /* MenuBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200001B /* MenuBar.swift */; };
 		A1000020 /* SceneKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A2000021 /* SceneKit.framework */; };
+		A1000012 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A200001C /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -32,17 +26,11 @@
 		A2000003 /* PlayerViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerViewModel.swift; sourceTree = "<group>"; };
 		A2000005 /* VRPlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VRPlayerView.swift; sourceTree = "<group>"; };
 		A2000006 /* ThreeDPlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThreeDPlayerView.swift; sourceTree = "<group>"; };
-		A2000007 /* PlayerControlsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerControlsView.swift; sourceTree = "<group>"; };
-		A2000008 /* PlaylistView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaylistView.swift; sourceTree = "<group>"; };
-		A2000009 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
-		A200000A /* MetalRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetalRenderer.swift; sourceTree = "<group>"; };
-		A200000B /* VideoEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoEngine.swift; sourceTree = "<group>"; };
-		A200000C /* AudioPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayer.swift; sourceTree = "<group>"; };
-		A200000D /* PlaylistManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaylistManager.swift; sourceTree = "<group>"; };
-		A200000E /* MenuBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBar.swift; sourceTree = "<group>"; };
-		A200000F /* KeyboardShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardShortcuts.swift; sourceTree = "<group>"; };
-		A2000010 /* VideoInfoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoInfoView.swift; sourceTree = "<group>"; };
-		A2000012 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A2000018 /* PlaylistView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaylistView.swift; sourceTree = "<group>"; };
+		A2000019 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		A200001A /* VideoInfoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoInfoView.swift; sourceTree = "<group>"; };
+		A200001B /* MenuBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBar.swift; sourceTree = "<group>"; };
+		A200001C /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A2000021 /* SceneKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SceneKit.framework; path = System/Library/Frameworks/SceneKit.framework; sourceTree = SDKROOT; };
 		A3000001 /* Mocpot.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Mocpot.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -75,17 +63,11 @@
 				A2000003 /* PlayerViewModel.swift */,
 				A2000005 /* VRPlayerView.swift */,
 				A2000006 /* ThreeDPlayerView.swift */,
-				A2000007 /* PlayerControlsView.swift */,
-				A2000008 /* PlaylistView.swift */,
-				A2000009 /* SettingsView.swift */,
-				A200000A /* MetalRenderer.swift */,
-				A200000B /* VideoEngine.swift */,
-				A200000C /* AudioPlayer.swift */,
-				A200000D /* PlaylistManager.swift */,
-				A200000E /* MenuBar.swift */,
-				A200000F /* KeyboardShortcuts.swift */,
-				A2000010 /* VideoInfoView.swift */,
-				A2000012 /* Assets.xcassets */,
+				A2000018 /* PlaylistView.swift */,
+				A2000019 /* SettingsView.swift */,
+				A200001A /* VideoInfoView.swift */,
+				A200001B /* MenuBar.swift */,
+				A200001C /* Assets.xcassets */,
 			);
 			name = "PotPlayer-mac";
 			path = "PotPlayer-mac/PotPlayer-mac";
@@ -147,7 +129,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				A6000001 /* PotPlayerMac */,
+				A6000001 /* Mocpot */,
 			);
 		};
 /* End PBXProject section */
@@ -173,16 +155,10 @@
 				A1000003 /* PlayerViewModel.swift in Sources */,
 				A1000005 /* VRPlayerView.swift in Sources */,
 				A1000006 /* ThreeDPlayerView.swift in Sources */,
-				A1000007 /* PlayerControlsView.swift in Sources */,
-				A1000008 /* PlaylistView.swift in Sources */,
-				A1000009 /* SettingsView.swift in Sources */,
-				A100000A /* MetalRenderer.swift in Sources */,
-				A100000B /* VideoEngine.swift in Sources */,
-				A100000C /* AudioPlayer.swift in Sources */,
-				A100000D /* PlaylistManager.swift in Sources */,
-				A100000E /* MenuBar.swift in Sources */,
-				A100000F /* KeyboardShortcuts.swift in Sources */,
-				A1000010 /* VideoInfoView.swift in Sources */,
+				A1000018 /* PlaylistView.swift in Sources */,
+				A1000019 /* SettingsView.swift in Sources */,
+				A100001A /* VideoInfoView.swift in Sources */,
+				A100001B /* MenuBar.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

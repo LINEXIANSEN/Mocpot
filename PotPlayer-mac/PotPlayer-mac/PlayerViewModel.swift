@@ -135,6 +135,10 @@ class PlayerViewModel: NSObject, ObservableObject {
     @Published var showInspector: Bool = false
     @Published var showPlaylist: Bool = false
 
+    // Scrubbing state
+    @Published var isScrubbing: Bool = false
+    @Published var scrubTarget: Double = 0
+
     // A-B Loop
     @Published var loopPointA: Double?
     @Published var loopPointB: Double?
@@ -224,12 +228,14 @@ class PlayerViewModel: NSObject, ObservableObject {
         detectVideoType(url: url)
         loadSubtitlesForVideo(url: url)
 
-        if resumePlayback {
-            restorePlaybackPosition(url: url)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            self.updateVideoInfo()
+            self.player?.rate = self.playbackSpeed.value
+            self.isPlaying = true
         }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            self.updateVideoInfo()
+        if resumePlayback {
+            restorePlaybackPosition(url: url)
         }
     }
 
@@ -276,7 +282,10 @@ class PlayerViewModel: NSObject, ObservableObject {
         let interval = CMTime(seconds: 0.1, preferredTimescale: 600)
         timeObserverToken = player?.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
             guard let self = self else { return }
-            self.currentTime = time.seconds
+
+            if !self.isScrubbing {
+                self.currentTime = time.seconds
+            }
 
             if self.isABLooping, let a = self.loopPointA, let b = self.loopPointB {
                 if time.seconds >= b {

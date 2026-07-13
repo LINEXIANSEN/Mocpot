@@ -76,6 +76,7 @@ struct VRSceneContainer: NSViewRepresentable {
         sphere.firstMaterial = material
 
         let sphereNode = SCNNode(geometry: sphere)
+        sphereNode.name = "vrSphere"
         scene.rootNode.addChildNode(sphereNode)
 
         let camera = SCNCamera()
@@ -94,19 +95,27 @@ struct VRSceneContainer: NSViewRepresentable {
         container.addSubview(sceneView)
 
         context.coordinator.cameraNode = cameraNode
+        context.coordinator.sceneView = sceneView
 
         return container
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {
-        guard let cameraNode = context.coordinator.cameraNode else { return }
+        guard let cameraNode = context.coordinator.cameraNode,
+              let sceneView = context.coordinator.sceneView else { return }
+
         cameraNode.eulerAngles = SCNVector3(pitch, yaw, 0)
+
+        if let sphereNode = sceneView.scene?.rootNode.childNode(withName: "vrSphere", recursively: false) {
+            sphereNode.geometry?.firstMaterial?.diffuse.contents = player
+        }
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     class Coordinator {
         var cameraNode: SCNNode?
+        var sceneView: SCNView?
     }
 }
 

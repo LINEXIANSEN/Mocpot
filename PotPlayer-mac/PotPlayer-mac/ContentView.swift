@@ -248,31 +248,25 @@ struct BottomControls: View {
         VStack(spacing: 0) {
             // Timeline
             HStack(spacing: 12) {
-                Text(viewModel.formatTime(viewModel.currentTime))
+                Text(viewModel.formatTime(viewModel.isScrubbing ? viewModel.scrubTarget : viewModel.currentTime))
                     .font(.system(.caption, design: .monospaced)).foregroundColor(.white)
 
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        Rectangle().fill(Color.white.opacity(0.3)).frame(height: 4)
-                        Rectangle().fill(Color.accentColor).frame(
-                            width: viewModel.duration > 0
-                                ? CGFloat(viewModel.currentTime / viewModel.duration) * geo.size.width
-                                : 0, height: 4)
-                        if let a = viewModel.loopPointA {
-                            Circle().fill(Color.green).frame(width: 8, height: 8)
-                                .offset(x: CGFloat(a / max(viewModel.duration, 1)) * geo.size.width - 4)
+                Slider(
+                    value: Binding(
+                        get: { viewModel.isScrubbing ? viewModel.scrubTarget : (viewModel.duration > 0 ? viewModel.currentTime / viewModel.duration : 0) },
+                        set: { newValue in
+                            viewModel.isScrubbing = true
+                            viewModel.scrubTarget = newValue * viewModel.duration
                         }
-                        if let b = viewModel.loopPointB {
-                            Circle().fill(Color.red).frame(width: 8, height: 8)
-                                .offset(x: CGFloat(b / max(viewModel.duration, 1)) * geo.size.width - 4)
+                    ),
+                    in: 0...1,
+                    onEditingChanged: { editing in
+                        if !editing {
+                            viewModel.seek(to: viewModel.scrubTarget)
+                            viewModel.isScrubbing = false
                         }
                     }
-                    .frame(height: 20)
-                    .contentShape(Rectangle())
-                    .gesture(DragGesture(minimumDistance: 0).onChanged { value in
-                        viewModel.seekPercentage(Double(value.location.x / geo.size.width) * 100)
-                    })
-                }.frame(height: 20)
+                ).accentColor(.accentColor)
 
                 Text(viewModel.formatTime(viewModel.duration))
                     .font(.system(.caption, design: .monospaced)).foregroundColor(.white)

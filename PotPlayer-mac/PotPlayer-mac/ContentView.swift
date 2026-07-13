@@ -70,6 +70,24 @@ struct ContentView: View {
                     Image(systemName: "folder.badge.plus").help("导入文件夹")
                 }.keyboardShortcut("O", modifiers: [.command, .shift])
 
+                Menu {
+                    ForEach(PlayerViewModel.FolderSortOrder.allCases) { order in
+                        Button(action: {
+                            viewModel.folderSortOrder = order
+                            viewModel.openFolderPanel()
+                        }) {
+                            HStack {
+                                Text(order.rawValue)
+                                if viewModel.folderSortOrder == order {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+                } label: {
+                    Image(systemName: "arrow.up.arrow.down")
+                }.help("排序导入")
+
                 Button(action: { showPlaylist.toggle() }) {
                     Image(systemName: "list.bullet").help("播放列表 (⌘L)")
                 }.keyboardShortcut("l", modifiers: .command)
@@ -289,6 +307,10 @@ struct BottomControls: View {
                     CtrlBtn(icon: "forward.fill") { viewModel.nextTrack() }
                     CtrlBtn(icon: "stop.fill") { viewModel.stopPlayback() }
                     CtrlBtn(icon: viewModel.isLooping ? "repeat.1" : "repeat") { viewModel.toggleLooping() }
+                    CtrlBtn(icon: viewModel.shufflePlayback ? "shuffle" : "arrow.triangle.2.circlepath") {
+                        viewModel.shufflePlayback.toggle()
+                    }
+                    .foregroundColor(viewModel.shufflePlayback ? .accentColor : .white)
                     CtrlBtn(icon: "arrowtriangle.left.and.line.vertical.and.arrowtriangle.right") {
                         viewModel.setLoopPointA()
                     }.help("设置 A 点 (A)")

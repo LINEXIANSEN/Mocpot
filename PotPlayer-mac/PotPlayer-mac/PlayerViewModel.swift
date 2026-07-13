@@ -491,6 +491,18 @@ class PlayerViewModel: NSObject, ObservableObject {
 
     // MARK: - Folder Import
 
+    enum FolderSortOrder: String, CaseIterable, Identifiable {
+        case nameAsc = "名称 A→Z"
+        case nameDesc = "名称 Z→A"
+        case dateAsc = "时间 旧→新"
+        case dateDesc = "时间 新→旧"
+        case natural = "自然顺序"
+
+        var id: String { rawValue }
+    }
+
+    @Published var folderSortOrder: FolderSortOrder = .natural
+
     func openFolderPanel() {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = false
@@ -507,10 +519,30 @@ class PlayerViewModel: NSObject, ObservableObject {
     func importFolder(url: URL) {
         let videoExtensions = ["mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "m4v", "mpg", "mpeg", "ts", "mts", "m2ts", "3gp", "ogv"]
 
-        guard let items = try? FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: nil) else { return }
+        guard let items = try? FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: [.creationDateKey, .contentModificationDateKey]) else { return }
 
-        let videoFiles = items.filter { videoExtensions.contains($0.pathExtension.lowercased()) }
-            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+        var videoFiles = items.filter { videoExtensions.contains($0.pathExtension.lowercased()) }
+
+        switch folderSortOrder {
+        case .nameAsc:
+            videoFiles.sort { $0.lastPathComponent.localizedCaseInsensitiveCompare($1.lastPathComponent) == .orderedAscending }
+        case .nameDesc:
+            videoFiles.sort { $0.lastPathComponent.localizedCaseInsensitiveCompare($1.lastPathComponent) == .orderedDescending }
+        case .dateAsc:
+            videoFiles.sort { url1, url2 in
+                let d1 = (try? url1.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? .distantPast
+                let d2 = (try? url2.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? .distantPast
+                return d1 < d2
+            }
+        case .dateDesc:
+            videoFiles.sort { url1, url2 in
+                let d1 = (try? url1.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? .distantPast
+                let d2 = (try? url2.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? .distantPast
+                return d1 > d2
+            }
+        case .natural:
+            break
+        }
 
         for video in videoFiles {
             if !playlist.contains(video) {

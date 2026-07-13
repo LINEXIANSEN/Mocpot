@@ -4,10 +4,22 @@ struct PlaylistView: View {
     @EnvironmentObject var viewModel: PlayerViewModel
     @State private var searchText = ""
     @State private var selectedItems: Set<URL> = []
+    @State private var sortOrder: SortOrder = .orderAdded
+
+    enum SortOrder: String, CaseIterable, Identifiable {
+        case orderAdded = "添加顺序"
+        case nameAsc = "名称 A→Z"
+        case nameDesc = "名称 Z→A"
+        case dateAsc = "时间 旧→新"
+        case dateDesc = "时间 新→旧"
+
+        var id: String { rawValue }
+    }
 
     var filteredPlaylist: [URL] {
-        if searchText.isEmpty { return viewModel.playlist }
-        return viewModel.playlist.filter { $0.lastPathComponent.localizedCaseInsensitiveContains(searchText) }
+        var items = viewModel.playlist
+        if searchText.isEmpty { return items }
+        return items.filter { $0.lastPathComponent.localizedCaseInsensitiveContains(searchText) }
     }
 
     var body: some View {
@@ -27,6 +39,35 @@ struct PlaylistView: View {
                 TextField("搜索...", text: $searchText).textFieldStyle(.plain)
             }.padding(8).background(Color(nsColor: .controlBackgroundColor)).cornerRadius(6)
              .padding(.horizontal, 12).padding(.top, 8)
+
+            HStack {
+                Menu {
+                    ForEach(SortOrder.allCases) { order in
+                        Button(action: { sortOrder = order }) {
+                            HStack {
+                                Text(order.rawValue)
+                                if sortOrder == order { Image(systemName: "checkmark") }
+                            }
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.up.arrow.down").font(.caption)
+                        Text(sortOrder.rawValue).font(.caption)
+                    }
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .background(Color.secondary.opacity(0.15)).cornerRadius(4)
+                }.menuStyle(.borderlessButton)
+
+                Spacer()
+
+                Button(action: { viewModel.shufflePlaylist() }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "shuffle").font(.caption)
+                        Text("随机").font(.caption)
+                    }
+                }.buttonStyle(.borderless)
+            }.padding(.horizontal, 12).padding(.top, 4)
 
             Divider().padding(.top, 8)
 

@@ -8,6 +8,7 @@ struct VRPlayerView: View {
     @State private var pitch: Double = 0
     @State private var lastDragLocation: CGPoint = .zero
     @State private var isDragging = false
+    @State private var showHint = true
 
     var body: some View {
         ZStack {
@@ -34,14 +35,23 @@ struct VRPlayerView: View {
                 HStack {
                     VRInfoBadge(text: viewModel.vrMode.rawValue)
                     Spacer()
-                    VRInfoBadge(text: "拖拽旋转 · 双击回正")
+                    if showHint {
+                        VRInfoBadge(text: "拖拽旋转 · 双击回正")
+                            .transition(.opacity)
+                    }
                 }.padding(16)
                 Spacer()
                 VRControlBar()
             }
         }
         .background(Color.black)
-        .onAppear { if viewModel.vrMode == .none { viewModel.vrMode = .mono } }
+        .onAppear {
+            if viewModel.vrMode == .none { viewModel.vrMode = .mono }
+            showHint = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                withAnimation { showHint = false }
+            }
+        }
     }
 }
 

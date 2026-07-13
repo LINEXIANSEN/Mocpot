@@ -87,7 +87,7 @@ struct ContentView: View {
 
                 Button(action: { viewModel.togglePlayPause() }) {
                     Image(systemName: viewModel.isPlaying ? "pause.fill" : "play.fill")
-                }.help("播放/暂停 (Space)").keyboardShortcut(" ", modifiers: [])
+                }.help("播放/暂停 (Space)")
 
                 Button(action: { viewModel.nextTrack() }) {
                     Image(systemName: "forward.fill")
@@ -194,6 +194,11 @@ struct StandardPlayerView: View {
                 }
             }
             .onHover { h in withAnimation(.easeInOut(duration: 0.2)) { isHovering = h } }
+            .highPriorityGesture(
+                TapGesture(count: 2).onEnded {
+                    viewModel.toggleFullscreen()
+                }
+            )
             .onTapGesture(count: 1) {
                 viewModel.togglePlayPause()
                 osdText = viewModel.isPlaying ? "▶ 播放" : "⏸ 暂停"
@@ -201,9 +206,6 @@ struct StandardPlayerView: View {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                     withAnimation { showOSD = false }
                 }
-            }
-            .onTapGesture(count: 2) {
-                viewModel.toggleFullscreen()
             }
         }
     }

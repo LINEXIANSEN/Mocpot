@@ -26,8 +26,13 @@ struct VRPlayerView: View {
                             }
                             .onEnded { _ in isDragging = false }
                     )
-                    .onTapGesture(count: 2) {
-                        withAnimation(.easeInOut(duration: 0.4)) { yaw = 0; pitch = 0 }
+                    .highPriorityGesture(
+                        TapGesture(count: 2).onEnded {
+                            withAnimation(.easeInOut(duration: 0.4)) { yaw = 0; pitch = 0 }
+                        }
+                    )
+                    .onTapGesture(count: 1) {
+                        viewModel.togglePlayPause()
                     }
             }
 

@@ -43,8 +43,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
-        guard let url = urls.first else { return }
-        viewModel?.openFile(url: url)
+        for url in urls {
+            viewModel?.openFile(url: url)
+            break
+        }
     }
 
     func setupGlobalHotkeys() {
@@ -57,24 +59,28 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func handleKeyDown(_ event: NSEvent) {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let isCommand = flags.contains(.command)
-        let isOption = flags.contains(.option)
         let keyCode = event.keyCode
 
         guard let vm = viewModel else { return }
+
+        // F key = fullscreen (no modifiers)
+        if !isCommand && keyCode == 3 {
+            vm.toggleFullscreen()
+            return
+        }
+
+        // Space = play/pause (no modifiers)
+        if !isCommand && keyCode == 49 {
+            vm.togglePlayPause()
+            return
+        }
 
         if isCommand {
             switch keyCode {
             case 49:
                 vm.togglePlayPause()
-            default:
-                break
-            }
-        }
-
-        if isOption {
-            switch keyCode {
-            case 49:
-                vm.stopPlayback()
+            case 3:
+                vm.toggleFullscreen()
             default:
                 break
             }

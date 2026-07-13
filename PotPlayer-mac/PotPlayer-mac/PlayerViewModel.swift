@@ -463,11 +463,56 @@ class PlayerViewModel: NSObject, ObservableObject {
     }
 
     func toggleFullscreen() {
-        isFullscreen.toggle()
+        DispatchQueue.main.async {
+            if let window = NSApp.keyWindow ?? NSApp.windows.first {
+                window.toggleFullScreen(nil)
+            }
+        }
     }
 
     func toggleFloat() {
         windowFloat.toggle()
+        let shouldFloat = windowFloat
+        DispatchQueue.main.async {
+            if let window = NSApp.keyWindow ?? NSApp.windows.first {
+                window.level = shouldFloat ? .floating : .normal
+            }
+        }
+    }
+
+    // MARK: - Folder Import
+
+    func openFolderPanel() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.prompt = "导入文件夹"
+
+        panel.begin { [weak self] response in
+            guard response == .OK, let folderURL = panel.url else { return }
+            self?.importFolder(url: folderURL)
+        }
+    }
+
+    func importFolder(url: URL) {
+        let videoExtensions = ["mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "m4v", "mpg", "mpeg", "ts", "mts", "m2ts", "3gp", "ogv"]
+
+        guard let items = try? FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: nil) else { return }
+
+        let videoFiles = items.filter { videoExtensions.contains($0.pathExtension.lowercased()) }
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+
+        for video in videoFiles {
+            if !playlist.contains(video) {
+                playlist.append(video)
+            }
+        }
+
+        if playlist.count > 0 && currentPlaylistIndex == -1 {
+            currentPlaylistIndex = 0
+            openFile(url: playlist[0])
+        }
     }
 
     // MARK: - Playback Position

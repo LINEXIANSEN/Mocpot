@@ -66,6 +66,10 @@ struct ContentView: View {
                     Image(systemName: "folder").help("打开文件 (⌘O)")
                 }.keyboardShortcut("o", modifiers: .command)
 
+                Button(action: { viewModel.openFolderPanel() }) {
+                    Image(systemName: "folder.badge.plus").help("导入文件夹")
+                }.keyboardShortcut("O", modifiers: [.command, .shift])
+
                 Button(action: { showPlaylist.toggle() }) {
                     Image(systemName: "list.bullet").help("播放列表 (⌘L)")
                 }.keyboardShortcut("l", modifiers: .command)
@@ -453,8 +457,12 @@ struct WelcomeView: View {
             VStack(spacing: 12) {
                 Text("将视频文件拖放至此").foregroundColor(.gray)
                 Text("或").foregroundColor(.gray)
-                Button("打开文件") { viewModel.openFilePanel() }
-                    .buttonStyle(.bordered).controlSize(.large)
+                HStack(spacing: 16) {
+                    Button("打开文件") { viewModel.openFilePanel() }
+                        .buttonStyle(.bordered).controlSize(.large)
+                    Button("导入文件夹") { viewModel.openFolderPanel() }
+                        .buttonStyle(.bordered).controlSize(.large)
+                }
             }.padding(.top, 10)
 
             HStack(spacing: 40) {

@@ -1,4 +1,5 @@
 import AVFoundation
+import SceneKit
 import SwiftUI
 
 struct VRPlayerView: View {
@@ -13,33 +14,20 @@ struct VRPlayerView: View {
             Color.black
 
             if let player = viewModel.player {
-                GeometryReader { geo in
-                    let w = geo.size.width
-                    let h = geo.size.height
-                    let videoW = h * 2.5
-                    let panRange = videoW - w
-                    let normalizedYaw = yaw.truncatingRemainder(dividingBy: 360)
-                    let xOffset = -normalizedYaw / 360.0 * videoW
-
-                    SimpleVideoPlayer(player: player)
-                        .frame(width: videoW, height: h)
-                        .clipped()
-                        .rotation3DEffect(.degrees(pitch), axis: (x: 1, y: 0, z: 0), perspective: 0.5)
-                        .offset(x: xOffset > 0 ? xOffset - panRange : (xOffset < -panRange ? xOffset + panRange : xOffset))
-                }
-                .gesture(
-                    DragGesture(minimumDistance: 1)
-                        .onChanged { value in
-                            if !isDragging { lastDragLocation = value.location; isDragging = true }
-                            yaw += (value.location.x - lastDragLocation.x) * 0.5
-                            pitch = max(-70, min(70, pitch + (value.location.y - lastDragLocation.y) * 0.5))
-                            lastDragLocation = value.location
-                        }
-                        .onEnded { _ in isDragging = false }
-                )
-                .onTapGesture(count: 2) {
-                    withAnimation(.easeInOut(duration: 0.3)) { yaw = 0; pitch = 0 }
-                }
+                VRSceneContainer(player: player, yaw: $yaw, pitch: $pitch)
+                    .gesture(
+                        DragGesture(minimumDistance: 1)
+                            .onChanged { value in
+                                if !isDragging { lastDragLocation = value.location; isDragging = true }
+                                yaw -= (value.location.x - lastDragLocation.x) * 0.008
+                                pitch = max(-1.2, min(1.2, pitch + (value.location.y - lastDragLocation.y) * 0.008))
+                                lastDragLocation = value.location
+                            }
+                            .onEnded { _ in isDragging = false }
+                    )
+                    .onTapGesture(count: 2) {
+                        withAnimation(.easeInOut(duration: 0.4)) { yaw = 0; pitch = 0 }
+                    }
             }
 
             VStack {
@@ -54,6 +42,71 @@ struct VRPlayerView: View {
         }
         .background(Color.black)
         .onAppear { if viewModel.vrMode == .none { viewModel.vrMode = .mono } }
+    }
+}
+
+struct VRSceneContainer: NSViewRepresentable {
+    let player: AVPlayer
+    @Binding var yaw: Double
+    @Binding var pitch: Double
+
+    func makeNSView(context: Context) -> NSView {
+        let container = NSView()
+        container.wantsLayer = true
+
+        let sceneView = SCNView()
+        sceneView.backgroundColor = .black
+        sceneView.allowsCameraControl = false
+        sceneView.autoenablesDefaultLighting = false
+        sceneView.isPlaying = true
+        sceneView.rendersContinuously = true
+        sceneView.frame = container.bounds
+        sceneView.autoresizingMask = [.width, .height]
+
+        let scene = SCNScene()
+
+        let sphere = SCNSphere(radius: 50)
+        sphere.segmentCount = 64
+
+        let material = SCNMaterial()
+        material.isDoubleSided = true
+        material.diffuse.contents = player
+        material.lightingModel = .constant
+        material.cullMode = .front
+        sphere.firstMaterial = material
+
+        let sphereNode = SCNNode(geometry: sphere)
+        scene.rootNode.addChildNode(sphereNode)
+
+        let camera = SCNCamera()
+        camera.fieldOfView = 80
+        camera.zNear = 0.1
+        camera.zFar = 200
+
+        let cameraNode = SCNNode()
+        cameraNode.camera = camera
+        cameraNode.position = SCNVector3(0, 0, 0)
+        scene.rootNode.addChildNode(cameraNode)
+
+        sceneView.scene = scene
+        sceneView.pointOfView = cameraNode
+
+        container.addSubview(sceneView)
+
+        context.coordinator.cameraNode = cameraNode
+
+        return container
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        guard let cameraNode = context.coordinator.cameraNode else { return }
+        cameraNode.eulerAngles = SCNVector3(pitch, yaw, 0)
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    class Coordinator {
+        var cameraNode: SCNNode?
     }
 }
 

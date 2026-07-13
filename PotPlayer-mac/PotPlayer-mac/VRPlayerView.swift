@@ -143,11 +143,29 @@ struct VRControlBar: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text(viewModel.formatTime(viewModel.currentTime))
+                Text(viewModel.formatTime(viewModel.isScrubbing ? viewModel.scrubTarget : viewModel.currentTime))
                     .font(.system(.caption, design: .monospaced)).foregroundColor(.white)
-                Slider(value: $viewModel.currentTime, in: 0...max(viewModel.duration, 1)) { e in
-                    if !e { viewModel.seek(to: viewModel.currentTime) }
-                }.accentColor(.purple)
+                Slider(
+                    value: Binding(
+                        get: { viewModel.isScrubbing ? viewModel.scrubTarget / max(viewModel.duration, 1) : (viewModel.duration > 0 ? viewModel.currentTime / viewModel.duration : 0) },
+                        set: { newValue in
+                            viewModel.isScrubbing = true
+                            viewModel.scrubTarget = newValue * viewModel.duration
+                            viewModel.currentTime = newValue * viewModel.duration
+                        }
+                    ),
+                    in: 0...1,
+                    onEditingChanged: { editing in
+                        if editing {
+                            viewModel.isScrubbing = true
+                        } else {
+                            viewModel.seek(to: viewModel.scrubTarget)
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                viewModel.isScrubbing = false
+                            }
+                        }
+                    }
+                ).accentColor(.purple)
                 Text(viewModel.formatTime(viewModel.duration))
                     .font(.system(.caption, design: .monospaced)).foregroundColor(.white)
             }.padding(.horizontal, 16).padding(.bottom, 8)

@@ -2,6 +2,9 @@
 
 macOS 全功能视频播放器，支持 3D 和 VR 全景视频播放。
 
+[![Release](https://img.shields.io/github/v/release/LINEXIANSEN/Mocpot)](https://github.com/LINEXIANSEN/Mocpot/releases)
+[![License](https://img.shields.io/github/license/LINEXIANSEN/Mocpot)](LICENSE)
+
 ## 截图
 
 ![Mocpot](https://raw.githubusercontent.com/LINEXIANSEN/Mocpot/main/screenshot.png)

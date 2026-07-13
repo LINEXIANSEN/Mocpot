@@ -18,8 +18,29 @@ struct PlaylistView: View {
 
     var filteredPlaylist: [URL] {
         var items = viewModel.playlist
-        if searchText.isEmpty { return items }
-        return items.filter { $0.lastPathComponent.localizedCaseInsensitiveContains(searchText) }
+        if !searchText.isEmpty {
+            items = items.filter { $0.lastPathComponent.localizedCaseInsensitiveContains(searchText) }
+        }
+        switch sortOrder {
+        case .orderAdded:
+            return items
+        case .nameAsc:
+            return items.sorted { $0.lastPathComponent.localizedCaseInsensitiveCompare($1.lastPathComponent) == .orderedAscending }
+        case .nameDesc:
+            return items.sorted { $0.lastPathComponent.localizedCaseInsensitiveCompare($1.lastPathComponent) == .orderedDescending }
+        case .dateAsc:
+            return items.sorted { url1, url2 in
+                let d1 = (try? url1.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? .distantPast
+                let d2 = (try? url2.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? .distantPast
+                return d1 < d2
+            }
+        case .dateDesc:
+            return items.sorted { url1, url2 in
+                let d1 = (try? url1.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? .distantPast
+                let d2 = (try? url2.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? .distantPast
+                return d1 > d2
+            }
+        }
     }
 
     var body: some View {

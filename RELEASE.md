@@ -1,115 +1,68 @@
-# Mocpot 发布指南
+# Mocpot v1.0.1 发布说明
 
-## 当前状态
+## 下载
 
-✅ 应用已构建 (Release)  
-✅ DMG 安装包已创建  
-⚠️ 应用使用 Ad-hoc 签名（未公证）
+[最新版本](https://github.com/LINEXIANSEN/Mocpot/releases/latest)
 
-## 文件位置
+## 更新内容
 
-| 文件 | 路径 |
+### 修复
+- 修复 VR 360° 全景视频切换卡住问题
+- 修复进度条拖动回弹问题
+- 修复全屏按钮无效问题
+- 修复空格键播放/暂停问题
+- 修复打开文件不自动播放问题
+- 修复视频画面纯灰问题
+
+### 新增
+- VR 视频单击播放/暂停
+- 文件夹导入功能（自动扫描视频）
+- VR 操作提示 2 秒自动消失
+- 播放速度 0.25x - 4x
+- A-B 循环标记显示
+- 快速设置面板
+- 8 个设置标签页
+- 完整快捷键支持
+
+### 优化
+- 清理未使用的代码文件
+- 优化项目结构
+- 改进手势识别
+
+## 快捷键
+
+| 按键 | 功能 |
 |------|------|
-| DMG 安装包 | `~/Desktop/Mocpot-1.0.0.dmg` (2.0MB) |
-| App 应用 | `~/Desktop/Mocpot.app` |
-| 项目源码 | `~/Desktop/PotPlayer-mac/` |
+| Space | 播放/暂停 |
+| F | 全屏 |
+| ← / → | 快退/快进 10 秒 |
+| ⌘ + ← / → | 快退/快进 5 秒 |
+| ⌘ + O | 打开文件 |
+| ⌘ + ⇧ + O | 导入文件夹 |
+| ⌘ + L | 播放列表 |
+| ⌘ + S | 截图 |
+| ⌘ + D | 3D 模式 |
+| ⌘ + V | VR 模式 |
+| A | 设置 A 点 |
+| B | 设置 B 点 |
 
----
+## 系统要求
 
-## 发布方式
+- macOS 13.0 (Ventura) 或更高版本
+- 支持 ARM64 (Apple Silicon) 和 x86_64 (Intel)
 
-### 方式 1: 直接分享 (最简单)
+## 安装
 
-直接将 `Mocpot.app` 或 `Mocpot-1.0.0.dmg` 发给用户。
+1. 下载 `Mocpot-1.0.1.dmg`
+2. 双击打开 DMG
+3. 将 Mocpot 拖入 Applications 文件夹
+4. 首次打开：右键 → 打开
 
-用户首次打开时需要：
-1. 右键点击应用 → 选择"打开"
-2. 或在 系统设置 → 隐私与安全性 中允许打开
+## 致谢
 
-### 方式 2: GitHub Releases (推荐)
+- [IINA](https://iina.io/) - 参考了部分功能设计
+- [SceneKit](https://developer.apple.com/scenekit/) - VR 360° 渲染
 
-```bash
-# 1. 创建 GitHub 仓库
-# 2. 推送代码
-cd ~/Desktop/PotPlayer-mac
-git init
-git add .
-git commit -m "Release v1.0.0"
-git remote add origin https://github.com/yourusername/Mocpot.git
-git push -u origin main
+## 许可证
 
-# 3. 创建 Release
-gh release create v1.0.0 ~/Desktop/Mocpot-1.0.0.dmg \
-  --title "Mocpot v1.0.0" \
-  --notes "macOS 全功能视频播放器"
-```
-
-### 方式 3: Mac App Store
-
-需要 Apple Developer 账号 ($99/年)：
-
-1. 在 Xcode 中配置 Signing & Capabilities
-2. Archive → Upload to App Store Connect
-3. 提交审核
-
-### 方式 4: 公证 (推荐商业发布)
-
-```bash
-# 1. 签名
-codesign --sign "Developer ID Application: YOUR NAME" Mocpot.app
-
-# 2. 公证
-xcrun notarytool submit Mocpot-1.0.0.dmg \
-  --apple-id your@email.com \
-  --team-id YOUR_TEAM_ID \
-  --password app-specific-password
-
-# 3. 装订
-xcrun stapler staple Mocpot-1.0.0.dmg
-```
-
----
-
-## 版本更新
-
-更新版本号：
-1. 打开 Xcode 项目
-2. 选择 Target → Mocpot
-3. 修改 `MARKETING_VERSION` (如 1.1.0)
-4. 重新运行 `package.sh`
-
----
-
-## 自动更新
-
-如需自动更新功能，可集成:
-- Sparkle Framework: https://sparkle-project.org
-
-```swift
-// 在 AppDelegate 中添加
-import Sparkle
-
-func applicationDidFinishLaunching(_ notification: Notification) {
-    let updater = SUUpdater.shared()
-    updater?.feedURL = URL(string: "https://yourdomain.com/appcast.xml")
-}
-```
-
----
-
-## 故障排除
-
-### 用户无法打开应用
-```bash
-# 用户运行此命令移除隔离属性
-xattr -cr /Applications/Mocpot.app
-```
-
-### 签名问题
-```bash
-# 检查签名
-codesign -dv --verbose=4 Mocpot.app
-
-# 验证
-spctl -a -v Mocpot.app
-```
+MIT License

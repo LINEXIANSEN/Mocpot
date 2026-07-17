@@ -6,7 +6,7 @@
 set -e
 
 APP_NAME="Mocpot"
-BUILD_DIR="$HOME/Library/Developer/Xcode/DerivedData/PotPlayer-mac-eekpvrgkskpidgdjdimstwuazasc/Build/Products/Release"
+BUILD_DIR="$HOME/Library/Developer/Xcode/DerivedData/Mocpot-eekpvrgkskpidgdjdimstwuazasc/Build/Products/Release"
 OUTPUT_DIR="$HOME/Desktop"
 DMG_NAME="${APP_NAME}-1.0.0"
 DMG_PATH="$OUTPUT_DIR/$DMG_NAME.dmg"
@@ -16,7 +16,7 @@ echo "🎬 开始打包 ${APP_NAME}..."
 
 # 1. 构建 Release 版本
 echo "📦 构建 Release 版本..."
-xcodebuild -project PotPlayer-mac.xcodeproj \
+xcodebuild -project Mocpot.xcodeproj \
            -scheme Mocpot \
            -configuration Release \
            clean build

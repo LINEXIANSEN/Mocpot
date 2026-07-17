@@ -50,12 +50,12 @@
 		A5000001 /* Root */ = {
 			isa = PBXGroup;
 			children = (
-				A5000002 /* PotPlayer-mac */,
+				A5000002 /* Mocpot */,
 				A5000003 /* Products */,
 			);
 			sourceTree = "<group>";
 		};
-		A5000002 /* PotPlayer-mac */ = {
+		A5000002 /* Mocpot */ = {
 			isa = PBXGroup;
 			children = (
 				A2000001 /* PotPlayerMacApp.swift */,
@@ -69,8 +69,8 @@
 				A200001B /* MenuBar.swift */,
 				A200001C /* Assets.xcassets */,
 			);
-			name = "PotPlayer-mac";
-			path = "PotPlayer-mac/PotPlayer-mac";
+			name = "Mocpot";
+			path = "Mocpot/Sources";
 			sourceTree = "<group>";
 		};
 		A5000003 /* Products */ = {
@@ -116,7 +116,7 @@
 					};
 				};
 			};
-			buildConfigurationList = A8000001 /* Build configuration list for PBXProject "PotPlayer-mac" */;
+			buildConfigurationList = A8000001 /* Build configuration list for PBXProject "Mocpot" */;
 			compatibilityVersion = "Xcode 14.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
@@ -171,7 +171,6 @@
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_NONNULL = YES;
-				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
 				CLANG_ENABLE_MODULES = YES;
 				CLANG_ENABLE_OBJC_ARC = YES;
@@ -233,7 +232,6 @@
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_NONNULL = YES;
-				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
 				CLANG_ENABLE_MODULES = YES;
 				CLANG_ENABLE_OBJC_ARC = YES;
@@ -340,7 +338,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		A8000001 /* Build configuration list for PBXProject "PotPlayer-mac" */ = {
+		A8000001 /* Build configuration list for PBXProject "Mocpot" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				A9000001 /* Debug */,

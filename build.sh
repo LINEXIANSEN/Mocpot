@@ -11,15 +11,15 @@ if ! command -v xcodebuild &> /dev/null; then
 fi
 
 # Check if xcodeproj exists
-if [ ! -d "PotPlayer-mac.xcodeproj" ]; then
-    echo "Error: PotPlayer-mac.xcodeproj not found."
+if [ ! -d "Mocpot.xcodeproj" ]; then
+    echo "Error: Mocpot.xcodeproj not found."
     echo "Please run this script from the project root directory."
     exit 1
 fi
 
 # Build the project
 echo "Building with xcodebuild..."
-xcodebuild -project PotPlayer-mac.xcodeproj \
+xcodebuild -project Mocpot.xcodeproj \
            -scheme PotPlayerMac \
            -configuration Debug \
            build
@@ -30,7 +30,7 @@ if [ $? -eq 0 ]; then
     echo "The app is in: ~/Library/Developer/Xcode/DerivedData/"
     echo ""
     echo "To create a standalone app bundle:"
-    echo "  xcodebuild -project PotPlayer-mac.xcodeproj -scheme PotPlayerMac -configuration Release build"
+    echo "  xcodebuild -project Mocpot.xcodeproj -scheme PotPlayerMac -configuration Release build"
 else
     echo ""
     echo "Build failed. Please check the errors above."

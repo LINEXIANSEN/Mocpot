@@ -5,20 +5,30 @@ class PictureInPictureController: NSObject, ObservableObject {
     @Published var isPiPActive = false
     
     private var pipController: AVPictureInPictureController?
-    private var playerLayer: AVPlayerLayer?
     
-    func setup(with player: AVPlayer, playerLayer: AVPlayerLayer) {
-        self.playerLayer = playerLayer
-        
-        if AVPictureInPictureController.isPictureInPictureSupported() {
-            pipController = AVPictureInPictureController(playerLayer: playerLayer)
-            pipController?.delegate = self
-            pipController?.setValue(1, forKey: "controlsStyle")
+    func setup(with playerView: AVPlayerView) {
+        guard AVPictureInPictureController.isPictureInPictureSupported() else {
+            print("PiP not supported on this device")
+            return
         }
+        
+        guard let playerLayer = playerView.layer else {
+            print("No player layer found")
+            return
+        }
+        
+        pipController = AVPictureInPictureController(playerLayer: playerLayer as! AVPlayerLayer)
+        pipController?.delegate = self
+        pipController?.setValue(1, forKey: "controlsStyle")
+        
+        print("PiP controller initialized successfully")
     }
     
     func togglePiP() {
-        guard let pipController = pipController else { return }
+        guard let pipController = pipController else {
+            print("PiP controller not initialized")
+            return
+        }
         
         if pipController.isPictureInPictureActive {
             pipController.stopPictureInPicture()
@@ -41,20 +51,22 @@ extension PictureInPictureController: AVPictureInPictureControllerDelegate {
         DispatchQueue.main.async {
             self.isPiPActive = true
         }
+        print("PiP will start")
     }
     
     func pictureInPictureControllerDidStartPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
-        // PiP started successfully
+        print("PiP did start")
     }
     
     func pictureInPictureControllerWillStopPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
         DispatchQueue.main.async {
             self.isPiPActive = false
         }
+        print("PiP will stop")
     }
     
     func pictureInPictureControllerDidStopPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
-        // PiP stopped
+        print("PiP did stop")
     }
     
     func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, failedToStartPictureInPictureWithError error: Error) {

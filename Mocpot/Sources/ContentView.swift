@@ -191,9 +191,7 @@ struct StandardPlayerView: View {
                 if let player = viewModel.player {
                     SimpleVideoPlayer(player: player, onPlayerViewCreated: { pv in
                         if !pipSetupDone {
-                            let playerLayer = AVPlayerLayer()
-                            playerLayer.player = player
-                            viewModel.setupPiP(with: playerLayer)
+                            viewModel.setupPiP(with: pv)
                             pipSetupDone = true
                         }
                     })

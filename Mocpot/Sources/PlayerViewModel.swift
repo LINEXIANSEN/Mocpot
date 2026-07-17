@@ -222,7 +222,7 @@ class PlayerViewModel: NSObject, ObservableObject {
 
         let newPlayer = AVPlayer(playerItem: item)
         newPlayer.allowsExternalPlayback = true
-        newPlayer.preventsDisplaySleepDuringVideoPlayback = true
+        newPlayer.automaticallyWaitsToMinimizeStalling = false
         newPlayer.volume = Float(volume)
         newPlayer.isMuted = isMuted
         player = newPlayer
@@ -236,10 +236,12 @@ class PlayerViewModel: NSObject, ObservableObject {
         detectVideoType(url: url)
         loadSubtitlesForVideo(url: url)
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+        // Start playback immediately
+        newPlayer.play()
+        isPlaying = true
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
             self.updateVideoInfo()
-            self.player?.rate = self.playbackSpeed.value
-            self.isPlaying = true
         }
 
         if resumePlayback {

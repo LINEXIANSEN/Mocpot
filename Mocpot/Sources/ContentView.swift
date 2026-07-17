@@ -5,6 +5,7 @@ import SwiftUI
 struct SimpleVideoPlayer: NSViewRepresentable {
     let player: AVPlayer
     var onPlayerViewCreated: ((AVPlayerView) -> Void)?
+    var playerViewRef: Binding<AVPlayerView?>?
 
     func makeNSView(context: Context) -> AVPlayerView {
         let pv = AVPlayerView()
@@ -14,6 +15,7 @@ struct SimpleVideoPlayer: NSViewRepresentable {
         pv.layer?.backgroundColor = NSColor.black.cgColor
         
         DispatchQueue.main.async {
+            self.playerViewRef?.wrappedValue = pv
             self.onPlayerViewCreated?(pv)
         }
         
@@ -181,7 +183,7 @@ struct StandardPlayerView: View {
     @State private var osdText = ""
     @State private var showOSD = false
     @State private var showQuickSettings = false
-    @State private var pipSetupDone = false
+    @State private var playerViewRef: AVPlayerView?
 
     var body: some View {
         GeometryReader { _ in
@@ -190,11 +192,8 @@ struct StandardPlayerView: View {
 
                 if let player = viewModel.player {
                     SimpleVideoPlayer(player: player, onPlayerViewCreated: { pv in
-                        if !pipSetupDone {
-                            viewModel.setupPiP(with: pv)
-                            pipSetupDone = true
-                        }
-                    })
+                        viewModel.setupPiP(with: pv)
+                    }, playerViewRef: $playerViewRef)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
 

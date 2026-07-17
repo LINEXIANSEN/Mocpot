@@ -184,6 +184,7 @@ struct StandardPlayerView: View {
     @State private var showOSD = false
     @State private var showQuickSettings = false
     @State private var playerViewRef: AVPlayerView?
+    @State private var hideUITimer: Timer?
 
     var body: some View {
         GeometryReader { _ in
@@ -222,7 +223,23 @@ struct StandardPlayerView: View {
                         .transition(.move(edge: .trailing))
                 }
             }
-            .onHover { h in withAnimation(.easeInOut(duration: 0.2)) { isHovering = h } }
+            .onHover { hovering in
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    isHovering = hovering
+                }
+                resetHideUITimer()
+            }
+            .onContinuousHover { phase in
+                switch phase {
+                case .active:
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        isHovering = true
+                    }
+                    resetHideUITimer()
+                case .ended:
+                    break
+                }
+            }
             .highPriorityGesture(
                 TapGesture(count: 2).onEnded {
                     viewModel.toggleFullscreen()
@@ -235,6 +252,15 @@ struct StandardPlayerView: View {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                     withAnimation { showOSD = false }
                 }
+            }
+        }
+    }
+
+    private func resetHideUITimer() {
+        hideUITimer?.invalidate()
+        hideUITimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: false) { _ in
+            withAnimation(.easeInOut(duration: 0.3)) {
+                isHovering = false
             }
         }
     }

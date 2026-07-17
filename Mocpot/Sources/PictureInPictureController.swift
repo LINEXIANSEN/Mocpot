@@ -5,6 +5,7 @@ class PictureInPictureController: NSObject, ObservableObject {
     @Published var isPiPActive = false
     
     private var pipController: AVPictureInPictureController?
+    private var playerLayer: AVPlayerLayer?
     
     func setup(with playerView: AVPlayerView) {
         guard AVPictureInPictureController.isPictureInPictureSupported() else {
@@ -12,12 +13,15 @@ class PictureInPictureController: NSObject, ObservableObject {
             return
         }
         
-        guard let playerLayer = playerView.layer else {
-            print("No player layer found")
-            return
-        }
+        // Create a new player layer and add it to the view
+        let layer = AVPlayerLayer()
+        layer.player = playerView.player
+        layer.frame = playerView.bounds
+        layer.videoGravity = playerView.videoGravity
+        playerView.layer?.addSublayer(layer)
+        self.playerLayer = layer
         
-        pipController = AVPictureInPictureController(playerLayer: playerLayer as! AVPlayerLayer)
+        pipController = AVPictureInPictureController(playerLayer: layer)
         pipController?.delegate = self
         pipController?.setValue(1, forKey: "controlsStyle")
         

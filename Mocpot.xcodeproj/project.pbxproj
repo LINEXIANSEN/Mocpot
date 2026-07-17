@@ -17,6 +17,7 @@
 		A100001A /* VideoInfoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200001A /* VideoInfoView.swift */; };
 		A100001B /* MenuBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200001B /* MenuBar.swift */; };
 		A100001D /* ThemeManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200001D /* ThemeManager.swift */; };
+		A100001E /* PictureInPictureController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200001E /* PictureInPictureController.swift */; };
 		A1000020 /* SceneKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A2000021 /* SceneKit.framework */; };
 		A1000012 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A200001C /* Assets.xcassets */; };
 /* End PBXBuildFile section */
@@ -32,6 +33,7 @@
 		A200001A /* VideoInfoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoInfoView.swift; sourceTree = "<group>"; };
 		A200001B /* MenuBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBar.swift; sourceTree = "<group>"; };
 		A200001D /* ThemeManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemeManager.swift; sourceTree = "<group>"; };
+		A200001E /* PictureInPictureController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PictureInPictureController.swift; sourceTree = "<group>"; };
 		A200001C /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A2000021 /* SceneKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SceneKit.framework; path = System/Library/Frameworks/SceneKit.framework; sourceTree = SDKROOT; };
 		A3000001 /* Mocpot.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Mocpot.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -70,6 +72,7 @@
 				A200001A /* VideoInfoView.swift */,
 				A200001B /* MenuBar.swift */,
 				A200001D /* ThemeManager.swift */,
+				A200001E /* PictureInPictureController.swift */,
 				A200001C /* Assets.xcassets */,
 			);
 			name = "Mocpot";
@@ -163,6 +166,7 @@
 				A100001A /* VideoInfoView.swift in Sources */,
 				A100001B /* MenuBar.swift in Sources */,
 				A100001D /* ThemeManager.swift in Sources */,
+				A100001E /* PictureInPictureController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

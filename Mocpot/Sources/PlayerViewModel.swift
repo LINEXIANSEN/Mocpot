@@ -169,6 +169,10 @@ class PlayerViewModel: NSObject, ObservableObject {
     @Published var hardwareDecoding: Bool = true
     @Published var audioPassthrough: Bool = false
 
+    // Picture-in-Picture
+    @Published var isPiPActive = false
+    @Published var pipController = PictureInPictureController()
+
     // Mouse
     @Published var singleClickAction: String = "播放/暂停"
     @Published var doubleClickAction: String = "全屏"
@@ -487,6 +491,28 @@ class PlayerViewModel: NSObject, ObservableObject {
                 window.level = shouldFloat ? .floating : .normal
             }
         }
+    }
+
+    // MARK: - Picture-in-Picture
+
+    func setupPiP(with playerLayer: AVPlayerLayer) {
+        guard let player = player else { return }
+        pipController.setup(with: player, playerLayer: playerLayer)
+    }
+
+    func togglePiP() {
+        pipController.togglePiP()
+        isPiPActive = pipController.isPiPActive
+    }
+
+    func startPiP() {
+        pipController.startPiP()
+        isPiPActive = true
+    }
+
+    func stopPiP() {
+        pipController.stopPiP()
+        isPiPActive = false
     }
 
     // MARK: - Folder Import

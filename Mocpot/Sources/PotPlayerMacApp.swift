@@ -4,11 +4,14 @@ import SwiftUI
 struct MocpotApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var viewModel = PlayerViewModel()
+    @StateObject private var themeManager = ThemeManager()
 
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environmentObject(viewModel)
+                .environmentObject(themeManager)
+                .preferredColorScheme(themeManager.colorScheme)
                 .frame(minWidth: 800, minHeight: 500)
                 .onAppear {
                     setupMenu()
@@ -21,6 +24,7 @@ struct MocpotApp: App {
         Settings {
             SettingsView()
                 .environmentObject(viewModel)
+                .environmentObject(themeManager)
         }
         #endif
     }

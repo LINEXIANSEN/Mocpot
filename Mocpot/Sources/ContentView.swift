@@ -367,6 +367,8 @@ struct BottomControls: View {
                     }.menuStyle(.borderlessButton).help("画面布局")
 
                     CtrlBtn(icon: "arrow.up.left.and.arrow.down.right") { viewModel.toggleFullscreen() }.help("全屏 (F)")
+
+                    CtrlBtn(icon: "pip") { viewModel.togglePiP() }.help("画中画")
                 }
             }.padding(.horizontal, 16).padding(.vertical, 10)
         }

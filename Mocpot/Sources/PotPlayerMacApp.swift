@@ -79,6 +79,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
+        // P key = Picture-in-Picture (no modifiers)
+        if !isCommand && keyCode == 35 {
+            vm.togglePiP()
+            return
+        }
+
         if isCommand {
             switch keyCode {
             case 49:

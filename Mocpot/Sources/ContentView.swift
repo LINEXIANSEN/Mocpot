@@ -4,8 +4,6 @@ import SwiftUI
 
 struct SimpleVideoPlayer: NSViewRepresentable {
     let player: AVPlayer
-    var onPlayerViewCreated: ((AVPlayerView) -> Void)?
-    var playerViewRef: Binding<AVPlayerView?>?
 
     func makeNSView(context: Context) -> AVPlayerView {
         let pv = AVPlayerView()
@@ -13,12 +11,6 @@ struct SimpleVideoPlayer: NSViewRepresentable {
         pv.controlsStyle = .none
         pv.videoGravity = .resizeAspect
         pv.layer?.backgroundColor = NSColor.black.cgColor
-        
-        DispatchQueue.main.async {
-            self.playerViewRef?.wrappedValue = pv
-            self.onPlayerViewCreated?(pv)
-        }
-        
         return pv
     }
 
@@ -183,7 +175,6 @@ struct StandardPlayerView: View {
     @State private var osdText = ""
     @State private var showOSD = false
     @State private var showQuickSettings = false
-    @State private var playerViewRef: AVPlayerView?
     @State private var hideUITimer: Timer?
 
     var body: some View {
@@ -192,10 +183,11 @@ struct StandardPlayerView: View {
                 Color.black
 
                 if let player = viewModel.player {
-                    SimpleVideoPlayer(player: player, onPlayerViewCreated: { pv in
-                        viewModel.setupPiP(with: pv)
-                    }, playerViewRef: $playerViewRef)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    SimpleVideoPlayer(player: player)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .onAppear {
+                            viewModel.setupPiP()
+                        }
                 }
 
                 if showOSD {
@@ -227,17 +219,10 @@ struct StandardPlayerView: View {
                 withAnimation(.easeInOut(duration: 0.2)) {
                     isHovering = hovering
                 }
-                resetHideUITimer()
-            }
-            .onContinuousHover { phase in
-                switch phase {
-                case .active:
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        isHovering = true
-                    }
+                if hovering {
                     resetHideUITimer()
-                case .ended:
-                    break
+                } else {
+                    hideUITimer?.invalidate()
                 }
             }
             .highPriorityGesture(
@@ -249,6 +234,8 @@ struct StandardPlayerView: View {
                 viewModel.togglePlayPause()
                 osdText = viewModel.isPlaying ? "▶ 播放" : "⏸ 暂停"
                 showOSD = true
+                withAnimation { isHovering = true }
+                resetHideUITimer()
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                     withAnimation { showOSD = false }
                 }
@@ -259,8 +246,10 @@ struct StandardPlayerView: View {
     private func resetHideUITimer() {
         hideUITimer?.invalidate()
         hideUITimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: false) { _ in
-            withAnimation(.easeInOut(duration: 0.3)) {
-                isHovering = false
+            DispatchQueue.main.async {
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    isHovering = false
+                }
             }
         }
     }

@@ -501,23 +501,21 @@ class PlayerViewModel: NSObject, ObservableObject {
 
     // MARK: - Picture-in-Picture
     
-    func setupPiP(with playerView: AVPlayerView) {
-        pipController.setup(with: playerView)
+    func setupPiP() {
+        guard let player = player else { return }
+        pipController.setup(with: player)
     }
     
     func togglePiP() {
         pipController.togglePiP()
-        isPiPActive = pipController.isPiPActive
     }
     
     func startPiP() {
         pipController.startPiP()
-        isPiPActive = true
     }
     
     func stopPiP() {
         pipController.stopPiP()
-        isPiPActive = false
     }
 
     // MARK: - Folder Import

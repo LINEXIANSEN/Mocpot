@@ -5,32 +5,28 @@ class PictureInPictureController: NSObject, ObservableObject {
     @Published var isPiPActive = false
     
     private var pipController: AVPictureInPictureController?
-    private var playerLayer: AVPlayerLayer?
     
-    func setup(with playerView: AVPlayerView) {
+    func setup(with player: AVPlayer) {
         guard AVPictureInPictureController.isPictureInPictureSupported() else {
             print("PiP not supported on this device")
             return
         }
         
-        // Create a new player layer and add it to the view
-        let layer = AVPlayerLayer()
-        layer.player = playerView.player
-        layer.frame = playerView.bounds
-        layer.videoGravity = playerView.videoGravity
-        playerView.layer?.addSublayer(layer)
-        self.playerLayer = layer
+        // Create a dedicated player layer for PiP
+        let playerLayer = AVPlayerLayer(player: player)
+        playerLayer.frame = CGRect(x: 0, y: 0, width: 1, height: 1)
+        playerLayer.opacity = 0
+        playerLayer.isHidden = true
         
-        pipController = AVPictureInPictureController(playerLayer: layer)
+        pipController = AVPictureInPictureController(playerLayer: playerLayer)
         pipController?.delegate = self
-        pipController?.setValue(1, forKey: "controlsStyle")
         
-        print("PiP controller initialized successfully")
+        print("PiP controller initialized")
     }
     
     func togglePiP() {
         guard let pipController = pipController else {
-            print("PiP controller not initialized")
+            print("PiP not initialized")
             return
         }
         
@@ -51,32 +47,31 @@ class PictureInPictureController: NSObject, ObservableObject {
 }
 
 extension PictureInPictureController: AVPictureInPictureControllerDelegate {
-    func pictureInPictureControllerWillStartPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
-        DispatchQueue.main.async {
-            self.isPiPActive = true
-        }
+    func pictureInPictureControllerWillStartPictureInPicture(_ controller: AVPictureInPictureController) {
         print("PiP will start")
     }
     
-    func pictureInPictureControllerDidStartPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
+    func pictureInPictureControllerDidStartPictureInPicture(_ controller: AVPictureInPictureController) {
         print("PiP did start")
     }
     
-    func pictureInPictureControllerWillStopPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
-        DispatchQueue.main.async {
-            self.isPiPActive = false
-        }
+    func pictureInPictureControllerWillStopPictureInPicture(_ controller: AVPictureInPictureController) {
         print("PiP will stop")
     }
     
-    func pictureInPictureControllerDidStopPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
+    func pictureInPictureControllerDidStopPictureInPicture(_ controller: AVPictureInPictureController) {
         print("PiP did stop")
     }
     
-    func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, failedToStartPictureInPictureWithError error: Error) {
-        DispatchQueue.main.async {
-            self.isPiPActive = false
-        }
-        print("PiP failed to start: \(error.localizedDescription)")
+    func pictureInPictureController(_ controller: AVPictureInPictureController, failedToStartPictureInPictureWithError error: Error) {
+        print("PiP failed: \(error.localizedDescription)")
+    }
+    
+    func pictureInPictureController(_ controller: AVPictureInPictureController, restoreUserInterfaceForPictureInPictureStopWithCompletionHandler completionHandler: @escaping (Bool) -> Void) {
+        completionHandler(true)
+    }
+    
+    func pictureInPictureController(_ controller: AVPictureInPictureController, willStopPictureInPictureWithAnimationControlledByUser userStoppedIt: Bool) {
+        print("PiP will stop, user stopped: \(userStoppedIt)")
     }
 }

@@ -159,6 +159,9 @@ class PlayerViewModel: NSObject, ObservableObject {
     @Published var windowOpacity: Double = 1.0
     @Published var pauseWhenMinimized: Bool = false
 
+    // PiP
+    @Published var autoStartPiP: Bool = false
+
     // Playback
     @Published var resumePlayback: Bool = true
     @Published var autoPlayNext: Bool = true
@@ -647,6 +650,7 @@ class PlayerViewModel: NSObject, ObservableObject {
         defaults.set(showSubtitleBackground, forKey: "showSubtitleBackground")
         defaults.set(hardwareDecoding, forKey: "hardwareDecoding")
         defaults.set(shufflePlayback, forKey: "shufflePlayback")
+        defaults.set(autoStartPiP, forKey: "autoStartPiP")
     }
 
     func loadSettings() {
@@ -675,6 +679,7 @@ class PlayerViewModel: NSObject, ObservableObject {
         showSubtitleBackground = defaults.bool(forKey: "showSubtitleBackground")
         hardwareDecoding = defaults.object(forKey: "hardwareDecoding") as? Bool ?? true
         shufflePlayback = defaults.bool(forKey: "shufflePlayback")
+        autoStartPiP = defaults.bool(forKey: "autoStartPiP")
     }
 
     // MARK: - Utilities

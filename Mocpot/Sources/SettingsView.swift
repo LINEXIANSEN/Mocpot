@@ -101,6 +101,11 @@ struct PlaybackTab: View {
                 Toggle("循环播放", isOn: $viewModel.isLooping)
             }
 
+            Section("画中画") {
+                Toggle("退出全屏时自动进入画中画", isOn: $viewModel.autoStartPiP)
+                Toggle("最小化时自动进入画中画", isOn: $viewModel.pauseWhenMinimized)
+            }
+
             Section("播放速度") {
                 Picker("默认速度", selection: $viewModel.playbackSpeed) {
                     ForEach(PlaybackSpeed.allCases) { speed in

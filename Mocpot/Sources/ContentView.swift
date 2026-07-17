@@ -99,18 +99,6 @@ struct ContentView: View {
             }
 
             ToolbarItemGroup(placement: .automatic) {
-                Button(action: { viewModel.previousTrack() }) {
-                    Image(systemName: "backward.fill")
-                }.help("上一个 (⌘[)").keyboardShortcut("[", modifiers: .command)
-
-                Button(action: { viewModel.togglePlayPause() }) {
-                    Image(systemName: viewModel.isPlaying ? "pause.fill" : "play.fill")
-                }.help("播放/暂停 (Space)")
-
-                Button(action: { viewModel.nextTrack() }) {
-                    Image(systemName: "forward.fill")
-                }.help("下一个 (⌘])").keyboardShortcut("]", modifiers: .command)
-
                 Menu {
                     ForEach(PlaybackSpeed.allCases) { speed in
                         Button(action: { viewModel.playbackSpeed = speed }) {
@@ -126,10 +114,6 @@ struct ContentView: View {
                     Text("\(viewModel.playbackSpeed.rawValue)x")
                         .frame(width: 40)
                 }.help("播放速度")
-
-                Button(action: { viewModel.takeScreenshot() }) {
-                    Image(systemName: "camera.fill")
-                }.help("截图 (⌘S)").keyboardShortcut("s", modifiers: .command)
             }
         }
         .onAppear {
@@ -208,7 +192,7 @@ struct StandardPlayerView: View {
                         BottomControls(showQuickSettings: $showQuickSettings)
                     }
                 }
-                .opacity(isHovering ? 1 : (viewModel.isPlaying ? 0.2 : 1))
+                .opacity(isHovering ? 1 : 0)
 
                 if showQuickSettings {
                     QuickSettingsPanel(showPanel: $showQuickSettings)
@@ -216,7 +200,7 @@ struct StandardPlayerView: View {
                 }
             }
             .onHover { hovering in
-                withAnimation(.easeInOut(duration: 0.2)) {
+                withAnimation(.easeInOut(duration: 0.3)) {
                     isHovering = hovering
                 }
                 if hovering {
@@ -247,7 +231,7 @@ struct StandardPlayerView: View {
         hideUITimer?.invalidate()
         hideUITimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: false) { _ in
             DispatchQueue.main.async {
-                withAnimation(.easeInOut(duration: 0.3)) {
+                withAnimation(.easeInOut(duration: 0.5)) {
                     isHovering = false
                 }
             }

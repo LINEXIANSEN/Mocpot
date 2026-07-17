@@ -230,18 +230,18 @@ class PlayerViewModel: NSObject, ObservableObject {
         currentVideoURL = url
         videoTitle = url.deletingPathExtension().lastPathComponent
 
-        setupTimeObserver()
         loadMetadata(url: url)
         saveRecentFile(url: url)
         detectVideoType(url: url)
         loadSubtitlesForVideo(url: url)
 
-        // Start playback immediately
-        newPlayer.play()
-        isPlaying = true
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+        // Wait for player to be ready, then setup time observer and start playback
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            guard let self = self else { return }
+            self.setupTimeObserver()
             self.updateVideoInfo()
+            self.player?.play()
+            self.isPlaying = true
         }
 
         if resumePlayback {

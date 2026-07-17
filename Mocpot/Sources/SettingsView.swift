@@ -45,9 +45,19 @@ struct GeneralTab: View {
     @AppStorage("openPanelDirectory") private var openPanelDirectory = "上次打开的目录"
     @AppStorage("showRecentFiles") private var showRecentFiles = true
     @AppStorage("autoScanSiblings") private var autoScanSiblings = true
+    @EnvironmentObject var themeManager: ThemeManager
 
     var body: some View {
         Form {
+            Section("外观") {
+                Picker("主题模式", selection: $themeManager.themeMode) {
+                    ForEach(ThemeManager.ThemeMode.allCases, id: \.self) { mode in
+                        Text(mode.rawValue).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+            }
+
             Section("启动") {
                 Picker("启动时", selection: $launchBehavior) {
                     Text("显示欢迎界面").tag("显示欢迎界面")

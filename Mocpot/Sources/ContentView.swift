@@ -4,6 +4,7 @@ import SwiftUI
 
 struct SimpleVideoPlayer: NSViewRepresentable {
     let player: AVPlayer
+    var onPlayerViewCreated: ((AVPlayerView) -> Void)?
 
     func makeNSView(context: Context) -> AVPlayerView {
         let pv = AVPlayerView()
@@ -11,6 +12,11 @@ struct SimpleVideoPlayer: NSViewRepresentable {
         pv.controlsStyle = .none
         pv.videoGravity = .resizeAspect
         pv.layer?.backgroundColor = NSColor.black.cgColor
+        
+        DispatchQueue.main.async {
+            self.onPlayerViewCreated?(pv)
+        }
+        
         return pv
     }
 
@@ -175,6 +181,7 @@ struct StandardPlayerView: View {
     @State private var osdText = ""
     @State private var showOSD = false
     @State private var showQuickSettings = false
+    @State private var pipSetupDone = false
 
     var body: some View {
         GeometryReader { _ in
@@ -182,8 +189,15 @@ struct StandardPlayerView: View {
                 Color.black
 
                 if let player = viewModel.player {
-                    SimpleVideoPlayer(player: player)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    SimpleVideoPlayer(player: player, onPlayerViewCreated: { pv in
+                        if !pipSetupDone {
+                            let playerLayer = AVPlayerLayer()
+                            playerLayer.player = player
+                            viewModel.setupPiP(with: playerLayer)
+                            pipSetupDone = true
+                        }
+                    })
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
 
                 if showOSD {
@@ -368,7 +382,7 @@ struct BottomControls: View {
 
                     CtrlBtn(icon: "arrow.up.left.and.arrow.down.right") { viewModel.toggleFullscreen() }.help("全屏 (F)")
 
-                    CtrlBtn(icon: "pip") { viewModel.togglePiP() }.help("画中画")
+                    CtrlBtn(icon: "rectangle.inset.bottomright.filled") { viewModel.togglePiP() }.help("画中画")
                 }
             }.padding(.horizontal, 16).padding(.vertical, 10)
         }

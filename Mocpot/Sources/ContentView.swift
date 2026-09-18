@@ -205,6 +205,7 @@ struct PlaybackChrome<Surface: View>: View {
         .onChange(of: viewModel.isScrubbing) { _ in revealControls() }
         .onChange(of: showQuickSettings) { _ in revealControls() }
         .onDisappear { hideTask?.cancel() }
+        .ignoresSafeArea(.all, edges: viewModel.isFullscreen ? .all : [])
     }
 
     private func revealControls() {

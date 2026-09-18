@@ -4,57 +4,20 @@ import SwiftUI
 
 struct VRPlayerView: View {
     @EnvironmentObject var viewModel: PlayerViewModel
-    @State private var yaw: Double = 0
-    @State private var pitch: Double = 0
-    @State private var lastDragLocation: CGPoint = .zero
-    @State private var isDragging = false
-    @State private var showHint = true
 
     var body: some View {
-        ZStack {
-            Color.black
-
-            if let player = viewModel.player {
-                VRSceneContainer(player: player, yaw: $yaw, pitch: $pitch)
-                    .gesture(
-                        DragGesture(minimumDistance: 1)
-                            .onChanged { value in
-                                if !isDragging { lastDragLocation = value.location; isDragging = true }
-                                yaw -= (value.location.x - lastDragLocation.x) * 0.008
-                                pitch = max(-1.2, min(1.2, pitch + (value.location.y - lastDragLocation.y) * 0.008))
-                                lastDragLocation = value.location
-                            }
-                            .onEnded { _ in isDragging = false }
-                    )
-                    .highPriorityGesture(
-                        TapGesture(count: 2).onEnded {
-                            withAnimation(.easeInOut(duration: 0.4)) { yaw = 0; pitch = 0 }
-                        }
-                    )
-                    .onTapGesture(count: 1) {
-                        viewModel.togglePlayPause()
-                    }
-            }
-
-            VStack {
-                HStack {
-                    VRInfoBadge(text: viewModel.vrMode.rawValue)
-                    Spacer()
-                    if showHint {
-                        VRInfoBadge(text: "拖拽旋转 · 双击回正")
-                            .transition(.opacity)
-                    }
-                }.padding(16)
-                Spacer()
-                VRControlBar()
-            }
-        }
-        .background(Color.black)
-        .onAppear {
-            if viewModel.vrMode == .none { viewModel.vrMode = .mono }
-            showHint = true
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                withAnimation { showHint = false }
+        PlaybackChrome {
+            ZStack(alignment: .topLeading) {
+                Color.black
+                if let player = viewModel.player {
+                    VRSceneContainer(player: player, isPlaying: viewModel.isPlaying,
+                                     togglePlayback: viewModel.togglePlayPause)
+                }
+                Text("拖拽环顾 · 滚轮缩放 · 双击回正")
+                    .font(.caption).foregroundColor(.white.opacity(0.65))
+                    .padding(10).background(.black.opacity(0.4), in: Capsule())
+                    .padding(.top, 56).padding(.leading, 16)
+                    .allowsHitTesting(false)
             }
         }
     }
@@ -62,149 +25,117 @@ struct VRPlayerView: View {
 
 struct VRSceneContainer: NSViewRepresentable {
     let player: AVPlayer
-    @Binding var yaw: Double
-    @Binding var pitch: Double
+    let isPlaying: Bool
+    let togglePlayback: () -> Void
 
-    func makeNSView(context: Context) -> NSView {
-        let container = NSView()
-        container.wantsLayer = true
-
-        let sceneView = SCNView()
-        sceneView.backgroundColor = .black
-        sceneView.allowsCameraControl = false
-        sceneView.autoenablesDefaultLighting = false
-        sceneView.isPlaying = true
-        sceneView.rendersContinuously = true
-        sceneView.frame = container.bounds
-        sceneView.autoresizingMask = [.width, .height]
-
+    func makeNSView(context: Context) -> PanoramaSceneView {
+        let view = PanoramaSceneView()
+        view.backgroundColor = .black
+        view.allowsCameraControl = false
+        view.autoenablesDefaultLighting = false
+        view.preferredFramesPerSecond = 60
+        view.antialiasingMode = .none
         let scene = SCNScene()
-
-        let sphere = SCNSphere(radius: 50)
-        sphere.segmentCount = 64
-
         let material = SCNMaterial()
-        material.isDoubleSided = true
         material.diffuse.contents = player
         material.lightingModel = .constant
-        material.cullMode = .front
+        material.isDoubleSided = true
+        material.writesToDepthBuffer = false
+        let sphere = SCNSphere(radius: 50)
+        sphere.segmentCount = 64
         sphere.firstMaterial = material
-
-        let sphereNode = SCNNode(geometry: sphere)
-        sphereNode.name = "vrSphere"
-        scene.rootNode.addChildNode(sphereNode)
-
+        scene.rootNode.addChildNode(SCNNode(geometry: sphere))
         let camera = SCNCamera()
         camera.fieldOfView = 80
         camera.zNear = 0.1
-        camera.zFar = 200
-
+        camera.zFar = 100
         let cameraNode = SCNNode()
         cameraNode.camera = camera
-        cameraNode.position = SCNVector3(0, 0, 0)
         scene.rootNode.addChildNode(cameraNode)
-
-        sceneView.scene = scene
-        sceneView.pointOfView = cameraNode
-
-        container.addSubview(sceneView)
-
-        context.coordinator.cameraNode = cameraNode
-        context.coordinator.sceneView = sceneView
-
-        return container
+        view.scene = scene
+        view.pointOfView = cameraNode
+        view.material = material
+        view.boundPlayer = player
+        view.togglePlayback = togglePlayback
+        view.isPlaying = isPlaying
+        view.rendersContinuously = isPlaying
+        return view
     }
 
-    func updateNSView(_ nsView: NSView, context: Context) {
-        guard let cameraNode = context.coordinator.cameraNode,
-              let sceneView = context.coordinator.sceneView else { return }
+    func updateNSView(_ view: PanoramaSceneView, context: Context) {
+        // Updating the playback clock must never recreate the video texture.
+        if view.boundPlayer !== player {
+            view.material?.diffuse.contents = player
+            view.boundPlayer = player
+            view.resetCamera()
+        }
+        if view.isPlaying != isPlaying {
+            view.isPlaying = isPlaying
+            view.rendersContinuously = isPlaying
+        }
+        view.togglePlayback = togglePlayback
+    }
 
-        cameraNode.eulerAngles = SCNVector3(pitch, yaw, 0)
+    static func dismantleNSView(_ view: PanoramaSceneView, coordinator: ()) {
+        view.isPlaying = false
+        view.rendersContinuously = false
+        view.material?.diffuse.contents = nil
+        view.boundPlayer = nil
+        view.togglePlayback = nil
+        view.pendingClick?.cancel()
+        view.scene = nil
+    }
+}
 
-        if let sphereNode = sceneView.scene?.rootNode.childNode(withName: "vrSphere", recursively: false) {
-            sphereNode.geometry?.firstMaterial?.diffuse.contents = player
+/// Camera movement stays in SceneKit; it does not invalidate the SwiftUI player tree.
+final class PanoramaSceneView: SCNView {
+    weak var boundPlayer: AVPlayer?
+    var material: SCNMaterial?
+    var togglePlayback: (() -> Void)?
+    private var yaw: CGFloat = 0
+    private var pitch: CGFloat = 0
+    private var dragDistance: CGFloat = 0
+    var pendingClick: DispatchWorkItem?
+
+    override func mouseDown(with event: NSEvent) {
+        pendingClick?.cancel()
+        dragDistance = 0
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        dragDistance += abs(event.deltaX) + abs(event.deltaY)
+        yaw -= event.deltaX * 0.006
+        pitch = max(-1.45, min(1.45, pitch + event.deltaY * 0.006))
+        updateCamera()
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        if event.clickCount == 2 { resetCamera() }
+        else if dragDistance < 3 {
+            let click = DispatchWorkItem { [weak self] in self?.togglePlayback?() }
+            pendingClick = click
+            DispatchQueue.main.asyncAfter(deadline: .now() + NSEvent.doubleClickInterval, execute: click)
         }
     }
 
-    func makeCoordinator() -> Coordinator { Coordinator() }
-
-    class Coordinator {
-        var cameraNode: SCNNode?
-        var sceneView: SCNView?
+    override func scrollWheel(with event: NSEvent) {
+        guard let camera = pointOfView?.camera else { return }
+        camera.fieldOfView = max(35, min(110, camera.fieldOfView + event.scrollingDeltaY * 0.15))
+        needsDisplay = true
     }
-}
 
-struct VRInfoBadge: View {
-    let text: String
-    var body: some View {
-        Text(text).font(.caption).foregroundColor(.white)
-            .padding(.horizontal, 8).padding(.vertical, 4)
-            .background(Color.black.opacity(0.7)).cornerRadius(6)
+    func resetCamera() {
+        yaw = 0
+        pitch = 0
+        pointOfView?.camera?.fieldOfView = 80
+        updateCamera()
     }
-}
 
-struct VRControlBar: View {
-    @EnvironmentObject var viewModel: PlayerViewModel
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Text(viewModel.formatTime(viewModel.isScrubbing ? viewModel.scrubTarget : viewModel.currentTime))
-                    .font(.system(.caption, design: .monospaced)).foregroundColor(.white)
-                Slider(
-                    value: Binding(
-                        get: { viewModel.isScrubbing ? viewModel.scrubTarget / max(viewModel.duration, 1) : (viewModel.duration > 0 ? viewModel.currentTime / viewModel.duration : 0) },
-                        set: { newValue in
-                            viewModel.isScrubbing = true
-                            viewModel.scrubTarget = newValue * viewModel.duration
-                            viewModel.currentTime = newValue * viewModel.duration
-                        }
-                    ),
-                    in: 0...1,
-                    onEditingChanged: { editing in
-                        if editing {
-                            viewModel.isScrubbing = true
-                        } else {
-                            viewModel.seek(to: viewModel.scrubTarget)
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                viewModel.isScrubbing = false
-                            }
-                        }
-                    }
-                ).accentColor(.purple)
-                Text(viewModel.formatTime(viewModel.duration))
-                    .font(.system(.caption, design: .monospaced)).foregroundColor(.white)
-            }.padding(.horizontal, 16).padding(.bottom, 8)
-
-            HStack(spacing: 20) {
-                VRBtn(icon: "backward.fill") { viewModel.previousTrack() }
-                VRBtn(icon: viewModel.isPlaying ? "pause.fill" : "play.fill", large: true) { viewModel.togglePlayPause() }
-                VRBtn(icon: "stop.fill") { viewModel.stopPlayback() }
-                VRBtn(icon: "forward.fill") { viewModel.nextTrack() }
-                Spacer()
-                VRBtn(icon: viewModel.isLooping ? "repeat.1" : "repeat") { viewModel.toggleLooping() }
-                Menu {
-                    ForEach(VRMode.allCases) { mode in
-                        Button(action: { viewModel.vrMode = mode }) {
-                            HStack { Text(mode.rawValue); if viewModel.vrMode == mode { Image(systemName: "checkmark") } }
-                        }
-                    }
-                } label: {
-                    Text(viewModel.vrMode.rawValue).font(.caption).foregroundColor(.white)
-                        .padding(.horizontal, 8).padding(.vertical, 4)
-                        .background(Color.purple.opacity(0.5)).cornerRadius(4)
-                }.menuStyle(.borderlessButton)
-                VRBtn(icon: "arrow.up.left.and.arrow.down.right") { viewModel.toggleFullscreen() }
-            }.padding(.horizontal, 16).padding(.bottom, 16)
-        }
-        .background(LinearGradient(gradient: Gradient(colors: [.clear, .black.opacity(0.8)]), startPoint: .top, endPoint: .bottom))
-    }
-}
-
-struct VRBtn: View {
-    let icon: String
-    var large: Bool = false
-    let action: () -> Void
-    var body: some View {
-        Button(action: action) { Image(systemName: icon).font(large ? .title : .title3).foregroundColor(.white) }.buttonStyle(.plain)
+    private func updateCamera() {
+        SCNTransaction.begin()
+        SCNTransaction.animationDuration = 0
+        pointOfView?.eulerAngles = SCNVector3(pitch, yaw, 0)
+        SCNTransaction.commit()
+        needsDisplay = true
     }
 }

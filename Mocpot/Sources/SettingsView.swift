@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject var viewModel: PlayerViewModel
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         TabView {
@@ -29,7 +30,12 @@ struct SettingsView: View {
             AboutTab()
                 .tabItem { Label("关于", systemImage: "info.circle") }
         }
-        .frame(width: 580, height: 480)
+        .frame(width: 660, height: 580)
+        .foregroundColor(.primary)
+        .background(.regularMaterial)
+        .background(PlayerPalette(scheme: scheme).canvas.opacity(0.72))
+        .tint(PlayerPalette(scheme: scheme).accent)
+        .accentColor(PlayerPalette(scheme: scheme).accent)
         .onAppear {
             NSWindow.allowsAutomaticWindowTabbing = false
         }
@@ -50,12 +56,9 @@ struct GeneralTab: View {
     var body: some View {
         Form {
             Section("外观") {
-                Picker("主题模式", selection: $themeManager.themeMode) {
-                    ForEach(ThemeManager.ThemeMode.allCases, id: \.self) { mode in
-                        Text(mode.rawValue).tag(mode)
-                    }
-                }
-                .pickerStyle(.segmented)
+                ThemeModePicker()
+                Text("立即应用于所有窗口。跟随系统会自动切换深浅外观。")
+                    .font(.caption).foregroundColor(.secondary)
             }
 
             Section("启动") {
@@ -82,7 +85,8 @@ struct GeneralTab: View {
                 Toggle("自动扫描同目录视频文件", isOn: $autoScanSiblings)
             }
         }
-        .padding(20)
+        .formStyle(.grouped)
+        .padding(12)
     }
 }
 
@@ -123,7 +127,8 @@ struct PlaybackTab: View {
                 }
             }
         }
-        .padding(20)
+        .formStyle(.grouped)
+        .padding(12)
     }
 }
 
@@ -245,7 +250,8 @@ struct AudioTab: View {
                 }
             }
         }
-        .padding(20)
+        .formStyle(.grouped)
+        .padding(12)
     }
 }
 
@@ -290,7 +296,8 @@ struct SubtitleTab: View {
                 }
             }
         }
-        .padding(20)
+        .formStyle(.grouped)
+        .padding(12)
     }
 }
 
@@ -328,7 +335,8 @@ struct ControlTab: View {
                 Toggle("三指滑动", isOn: .constant(true))
             }
         }
-        .padding(20)
+        .formStyle(.grouped)
+        .padding(12)
     }
 }
 
@@ -405,9 +413,8 @@ struct ShortcutTab: View {
 struct AboutTab: View {
     var body: some View {
         VStack(spacing: 16) {
-            Image(systemName: "play.rectangle.fill")
-                .font(.system(size: 64))
-                .foregroundColor(.accentColor)
+            Image("MocpotLogo")
+                .resizable().scaledToFit().frame(width: 72, height: 72)
 
             Text("Mocpot")
                 .font(.title)
@@ -425,8 +432,8 @@ struct AboutTab: View {
 
             VStack(alignment: .leading, spacing: 6) {
                 FeatureItem(icon: "film", text: "支持所有主流视频格式")
-                FeatureItem(icon: "3d", text: "3D 视频播放（左右/上下/红蓝）")
-                FeatureItem(icon: "visionpro", text: "360° VR 全景视频支持")
+                FeatureItem(icon: "cube", text: "3D 视频播放（左右/上下/红蓝）")
+                FeatureItem(icon: "globe", text: "360° VR 全景视频支持")
                 FeatureItem(icon: "pip", text: "画中画模式")
                 FeatureItem(icon: "photo.on.rectangle", text: "截图功能")
                 FeatureItem(icon: "repeat", text: "A-B 循环")

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "Building PotPlayer Mac..."
+echo "Building Mocpot..."
 echo ""
 
 # Check if Xcode is installed
@@ -20,7 +20,7 @@ fi
 # Build the project
 echo "Building with xcodebuild..."
 xcodebuild -project Mocpot.xcodeproj \
-           -scheme PotPlayerMac \
+           -scheme Mocpot \
            -configuration Debug \
            build
 
@@ -30,7 +30,7 @@ if [ $? -eq 0 ]; then
     echo "The app is in: ~/Library/Developer/Xcode/DerivedData/"
     echo ""
     echo "To create a standalone app bundle:"
-    echo "  xcodebuild -project Mocpot.xcodeproj -scheme PotPlayerMac -configuration Release build"
+    echo "  xcodebuild -project Mocpot.xcodeproj -scheme Mocpot -configuration Release build"
 else
     echo ""
     echo "Build failed. Please check the errors above."

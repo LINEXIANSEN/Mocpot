@@ -4,6 +4,7 @@ import SwiftUI
 
 struct SimpleVideoPlayer: NSViewRepresentable {
     let player: AVPlayer
+    var layout: VideoLayout = .fit
 
     func makeNSView(context: Context) -> AVPlayerView {
         let pv = AVPlayerView()
@@ -15,15 +16,24 @@ struct SimpleVideoPlayer: NSViewRepresentable {
     }
 
     func updateNSView(_ pv: AVPlayerView, context: Context) {
-        pv.player = player
+        if pv.player !== player { pv.player = player }
+        switch layout {
+        case .fill, .centerCrop: pv.videoGravity = .resizeAspectFill
+        case .stretch: pv.videoGravity = .resize
+        case .original, .fit: pv.videoGravity = .resizeAspect
+        }
+    }
+
+    static func dismantleNSView(_ pv: AVPlayerView, coordinator: ()) {
+        pv.player = nil
     }
 }
 
 struct ContentView: View {
+    @Environment(\.colorScheme) private var scheme
+    @EnvironmentObject private var themeManager: ThemeManager
     @EnvironmentObject var viewModel: PlayerViewModel
     @State private var isDragOver = false
-    @State private var showPlaylist = false
-    @State private var showSettings = false
 
     var body: some View {
         HStack(spacing: 0) {
@@ -48,14 +58,16 @@ struct ContentView: View {
                 handleDrop(providers: providers)
             }
 
-            if showPlaylist {
+            if viewModel.showPlaylist {
                 PlaylistView()
                     .frame(width: 280)
                     .transition(.move(edge: .trailing))
             }
         }
-        .background(Color.black)
-        .frame(minWidth: 800, minHeight: 500)
+        .background(PlayerPalette(scheme: scheme).canvas)
+        .tint(PlayerPalette(scheme: scheme).accent)
+        .accentColor(PlayerPalette(scheme: scheme).accent)
+        .frame(minWidth: viewModel.showPlaylist ? 960 : 800, minHeight: 500)
         .overlay(
             RoundedRectangle(cornerRadius: 0)
                 .stroke(isDragOver ? Color.accentColor : Color.clear, lineWidth: 3)
@@ -88,17 +100,23 @@ struct ContentView: View {
                     Image(systemName: "arrow.up.arrow.down")
                 }.help("排序导入")
 
-                Button(action: { showPlaylist.toggle() }) {
+                Button(action: { viewModel.showPlaylist.toggle() }) {
                     Image(systemName: "list.bullet").help("播放列表 (⌘L)")
                 }.keyboardShortcut("l", modifiers: .command)
             }
 
-            ToolbarItemGroup(placement: .principal) {
-                Text(viewModel.videoTitle)
-                    .font(.headline).foregroundColor(.white).lineLimit(1)
-            }
-
             ToolbarItemGroup(placement: .automatic) {
+                Menu {
+                    ForEach(ThemeManager.ThemeMode.allCases) { mode in
+                        Button {
+                            themeManager.themeMode = mode
+                        } label: {
+                            Label(mode.rawValue, systemImage: themeManager.themeMode == mode ? "checkmark.circle.fill" : mode.icon)
+                        }
+                    }
+                } label: {
+                    Image(systemName: themeManager.themeMode.icon)
+                }.help("外观：\(themeManager.themeMode.rawValue)")
                 Menu {
                     ForEach(PlaybackSpeed.allCases) { speed in
                         Button(action: { viewModel.playbackSpeed = speed }) {
@@ -116,11 +134,23 @@ struct ContentView: View {
                 }.help("播放速度")
             }
         }
-        .onAppear {
-            NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-                handleGlobalKeyDown(event)
-                return event
+        .overlay {
+            if viewModel.isLoading {
+                VStack(spacing: 12) {
+                    ProgressView().controlSize(.small)
+                    Text("正在打开视频…").font(.callout)
+                }
+                .padding(24).modifier(PlayerSurface())
             }
+        }
+        .alert("无法播放视频", isPresented: Binding(
+            get: { viewModel.playbackError != nil },
+            set: { if !$0 { viewModel.playbackError = nil } }
+        )) {
+            Button("好", role: .cancel) { viewModel.playbackError = nil }
+            Button("打开其他文件") { viewModel.openFilePanel() }
+        } message: {
+            Text(viewModel.playbackError ?? "")
         }
     }
 
@@ -136,105 +166,70 @@ struct ContentView: View {
         return true
     }
 
-    func handleGlobalKeyDown(_ event: NSEvent) {
-        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        let isCommand = flags.contains(.command)
+}
 
-        switch event.keyCode {
-        case 0:
-            if !isCommand { viewModel.setLoopPointA() }
-        case 11:
-            if !isCommand { viewModel.setLoopPointB() }
-        case 51:
-            if !isCommand { viewModel.clearABLoop() }
-        default:
-            break
+/// A shared chrome keeps playback controls consistent in every projection mode.
+struct PlaybackChrome<Surface: View>: View {
+    @EnvironmentObject var viewModel: PlayerViewModel
+    @State private var controlsVisible = true
+    @State private var showQuickSettings = false
+    @State private var hideTask: Task<Void, Never>?
+    let surface: Surface
+
+    init(@ViewBuilder surface: () -> Surface) { self.surface = surface() }
+
+    var body: some View {
+        ZStack(alignment: .trailing) {
+            surface
+            VStack {
+                TopBar()
+                Spacer()
+                BottomControls(showQuickSettings: $showQuickSettings)
+            }
+            .opacity(controlsVisible || !viewModel.isPlaying || viewModel.isScrubbing || showQuickSettings ? 1 : 0)
+            .allowsHitTesting(controlsVisible || !viewModel.isPlaying || viewModel.isScrubbing || showQuickSettings)
+            .animation(.easeInOut(duration: 0.2), value: controlsVisible)
+            if showQuickSettings {
+                QuickSettingsPanel(showPanel: $showQuickSettings)
+                    .padding(12)
+            }
+        }
+        .onContinuousHover { phase in
+            if case .active = phase { revealControls() }
+        }
+        .onAppear { revealControls() }
+        .onChange(of: viewModel.isPlaying) { _ in revealControls() }
+        .onChange(of: viewModel.isScrubbing) { _ in revealControls() }
+        .onChange(of: showQuickSettings) { _ in revealControls() }
+        .onDisappear { hideTask?.cancel() }
+    }
+
+    private func revealControls() {
+        controlsVisible = true
+        hideTask?.cancel()
+        guard viewModel.isPlaying, !viewModel.isScrubbing, !showQuickSettings else { return }
+        hideTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            guard !Task.isCancelled else { return }
+            controlsVisible = false
         }
     }
 }
 
 struct StandardPlayerView: View {
     @EnvironmentObject var viewModel: PlayerViewModel
-    @State private var isHovering = false
-    @State private var osdText = ""
-    @State private var showOSD = false
-    @State private var showQuickSettings = false
-    @State private var hideUITimer: Timer?
-
     var body: some View {
-        GeometryReader { _ in
+        PlaybackChrome {
             ZStack {
                 Color.black
-
                 if let player = viewModel.player {
-                    SimpleVideoPlayer(player: player)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .onAppear {
-                            viewModel.setupPiP()
-                        }
-                }
-
-                if showOSD {
-                    Text(osdText)
-                        .font(.system(size: 20, weight: .medium, design: .rounded))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 16).padding(.vertical, 8)
-                        .background(Color.black.opacity(0.7)).cornerRadius(8)
-                        .transition(.opacity)
-                }
-
-                VStack {
-                    if isHovering || !viewModel.isPlaying {
-                        TopBar()
-                    }
-                    Spacer()
-                    if isHovering || !viewModel.isPlaying {
-                        BottomControls(showQuickSettings: $showQuickSettings)
-                    }
-                }
-                .opacity(isHovering ? 1 : 0)
-
-                if showQuickSettings {
-                    QuickSettingsPanel(showPanel: $showQuickSettings)
-                        .transition(.move(edge: .trailing))
+                    SimpleVideoPlayer(player: player, layout: viewModel.videoLayout)
+                        .onAppear { viewModel.setupPiP() }
+                        .onChange(of: viewModel.currentVideoURL) { _ in viewModel.setupPiP() }
                 }
             }
-            .onHover { hovering in
-                withAnimation(.easeInOut(duration: 0.3)) {
-                    isHovering = hovering
-                }
-                if hovering {
-                    resetHideUITimer()
-                } else {
-                    hideUITimer?.invalidate()
-                }
-            }
-            .highPriorityGesture(
-                TapGesture(count: 2).onEnded {
-                    viewModel.toggleFullscreen()
-                }
-            )
-            .onTapGesture(count: 1) {
-                viewModel.togglePlayPause()
-                osdText = viewModel.isPlaying ? "▶ 播放" : "⏸ 暂停"
-                showOSD = true
-                withAnimation { isHovering = true }
-                resetHideUITimer()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                    withAnimation { showOSD = false }
-                }
-            }
-        }
-    }
-
-    private func resetHideUITimer() {
-        hideUITimer?.invalidate()
-        hideUITimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: false) { _ in
-            DispatchQueue.main.async {
-                withAnimation(.easeInOut(duration: 0.5)) {
-                    isHovering = false
-                }
-            }
+            .onTapGesture(count: 2) { viewModel.toggleFullscreen() }
+            .onTapGesture { viewModel.togglePlayPause() }
         }
     }
 }
@@ -244,9 +239,20 @@ struct TopBar: View {
 
     var body: some View {
         HStack {
+            Button(action: { viewModel.returnToHome() }) {
+                Image(systemName: "chevron.left")
+                    .font(.body.weight(.semibold))
+                    .frame(width: 30, height: 30)
+                    .background(.thinMaterial, in: Circle())
+            }
+            .buttonStyle(.plain)
+            .help("返回主页")
             Text(viewModel.videoTitle)
-                .font(.headline).foregroundColor(.white).lineLimit(1)
-                .padding(.horizontal, 16)
+                .font(.callout.weight(.medium)).foregroundColor(.white).lineLimit(1)
+                .padding(.horizontal, 12).padding(.vertical, 7)
+                .background(.black.opacity(0.42), in: Capsule())
+                .overlay(Capsule().stroke(.white.opacity(0.18)))
+                .shadow(color: .black.opacity(0.24), radius: 8, y: 3)
             Spacer()
 
             HStack(spacing: 12) {
@@ -275,125 +281,103 @@ struct BottomControls: View {
     @Binding var showQuickSettings: Bool
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Timeline
-            HStack(spacing: 12) {
-                Text(viewModel.formatTime(viewModel.isScrubbing ? viewModel.scrubTarget : viewModel.currentTime))
-                    .font(.system(.caption, design: .monospaced)).foregroundColor(.white)
-
-                Slider(
-                    value: Binding(
-                        get: { viewModel.isScrubbing ? viewModel.scrubTarget / max(viewModel.duration, 1) : (viewModel.duration > 0 ? viewModel.currentTime / viewModel.duration : 0) },
-                        set: { newValue in
-                            viewModel.isScrubbing = true
-                            viewModel.scrubTarget = newValue * viewModel.duration
-                            viewModel.currentTime = newValue * viewModel.duration
-                        }
-                    ),
-                    in: 0...1,
-                    onEditingChanged: { editing in
-                        if editing {
-                            viewModel.isScrubbing = true
-                        } else {
-                            viewModel.seek(to: viewModel.scrubTarget)
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                viewModel.isScrubbing = false
-                            }
-                        }
-                    }
-                ).accentColor(.accentColor)
-
-                Text(viewModel.formatTime(viewModel.duration))
-                    .font(.system(.caption, design: .monospaced)).foregroundColor(.white)
-            }.padding(.horizontal, 16).padding(.bottom, 8)
-
-            // Controls
-            HStack {
-                HStack(spacing: 16) {
-                    CtrlBtn(icon: "backward.fill") { viewModel.previousTrack() }
-                    CtrlBtn(icon: viewModel.isPlaying ? "pause.fill" : "play.fill", size: .title) {
-                        viewModel.togglePlayPause()
-                    }
-                    CtrlBtn(icon: "forward.fill") { viewModel.nextTrack() }
-                    CtrlBtn(icon: "stop.fill") { viewModel.stopPlayback() }
-                    CtrlBtn(icon: viewModel.isLooping ? "repeat.1" : "repeat") { viewModel.toggleLooping() }
-                    CtrlBtn(icon: viewModel.shufflePlayback ? "shuffle" : "arrow.triangle.2.circlepath") {
-                        viewModel.shufflePlayback.toggle()
-                    }
-                    .foregroundColor(viewModel.shufflePlayback ? .accentColor : .white)
-                    CtrlBtn(icon: "arrowtriangle.left.and.line.vertical.and.arrowtriangle.right") {
-                        viewModel.setLoopPointA()
-                    }.help("设置 A 点 (A)")
-                    CtrlBtn(icon: "arrowtriangle.right.and.line.vertical.and.arrowtriangle.left") {
-                        viewModel.setLoopPointB()
-                    }.help("设置 B 点 (B)")
-                }
-
-                Spacer()
-
-                HStack(spacing: 16) {
-                    CtrlBtn(icon: viewModel.isMuted ? "speaker.slash.fill" : "speaker.wave.3.fill") {
-                        viewModel.toggleMute()
-                    }
-                    Slider(value: $viewModel.volume, in: 0...1).frame(width: 80).accentColor(.white)
-
-                    Divider().frame(height: 20)
-
-                    Menu {
-                        ForEach(ThreeDMode.allCases) { mode in
-                            Button(action: { viewModel.threeDMode = mode }) {
-                                HStack { Text(mode.rawValue); if viewModel.threeDMode == mode { Image(systemName: "checkmark") } }
-                            }
-                        }
-                    } label: {
-                        Image(systemName: "3d").font(.title3)
-                            .foregroundColor(viewModel.threeDMode != .none ? .cyan : .white)
-                    }.menuStyle(.borderlessButton).help("3D 模式")
-
-                    Menu {
+        VStack(spacing: 10) {
+            PlaybackTimeline()
+            HStack(spacing: 16) {
+                CtrlBtn(icon: "backward.end.fill") { viewModel.previousTrack() }.help("上一个视频")
+                CtrlBtn(icon: viewModel.isPlaying ? "pause.fill" : "play.fill", size: .title2) {
+                    viewModel.togglePlayPause()
+                }.help("播放 / 暂停（空格）")
+                CtrlBtn(icon: "forward.end.fill") { viewModel.nextTrack() }.help("下一个视频")
+                CtrlBtn(icon: viewModel.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill") {
+                    viewModel.toggleMute()
+                }.help("静音（M）")
+                Slider(value: $viewModel.volume, in: 0...1)
+                    .frame(width: 72).accessibilityLabel("音量")
+                Spacer(minLength: 4)
+                Menu {
+                    Section("全景视频") {
                         ForEach(VRMode.allCases) { mode in
-                            Button(action: { viewModel.vrMode = mode }) {
-                                HStack { Text(mode.rawValue); if viewModel.vrMode == mode { Image(systemName: "checkmark") } }
+                            Button { viewModel.threeDMode = .none; viewModel.vrMode = mode } label: {
+                                Label(mode.rawValue, systemImage: viewModel.vrMode == mode ? "checkmark" : "circle")
                             }
                         }
-                    } label: {
-                        Image(systemName: "visionpro").font(.title3)
-                            .foregroundColor(viewModel.vrMode != .none ? .purple : .white)
-                    }.menuStyle(.borderlessButton).help("VR 模式")
-
-                    Divider().frame(height: 20)
-
-                    CtrlBtn(icon: "camera.fill") { viewModel.takeScreenshot() }.help("截图 (⌘S)")
-                    CtrlBtn(icon: "sidebar.right") { showQuickSettings.toggle() }.help("快速设置")
-
-                    Menu {
+                    }
+                    Section("3D 视频") {
+                        ForEach(ThreeDMode.allCases) { mode in
+                            Button { viewModel.vrMode = .none; viewModel.threeDMode = mode } label: {
+                                Label(mode.rawValue, systemImage: viewModel.threeDMode == mode ? "checkmark" : "circle")
+                            }
+                        }
+                    }
+                } label: {
+                    Text(viewModel.vrMode != .none ? viewModel.vrMode.rawValue :
+                         viewModel.threeDMode != .none ? viewModel.threeDMode.rawValue : "播放模式")
+                        .font(.callout)
+                }.menuStyle(.borderlessButton).fixedSize().help("普通 / 360° 全景 / 3D")
+                Menu {
+                    Toggle("单曲循环", isOn: $viewModel.isLooping)
+                    Toggle("随机播放", isOn: $viewModel.shufflePlayback)
+                    Divider()
+                    Button("设置 A 点（A）") { viewModel.setLoopPointA() }
+                    Button("设置 B 点（B）") { viewModel.setLoopPointB() }
+                    Button("清除 A-B 循环") { viewModel.clearABLoop() }
+                    Divider()
+                    Menu("画面布局") {
                         ForEach(VideoLayout.allCases) { layout in
-                            Button(action: { viewModel.videoLayout = layout }) {
-                                HStack { Text(layout.rawValue); if viewModel.videoLayout == layout { Image(systemName: "checkmark") } }
-                            }
+                            Button(layout.rawValue) { viewModel.videoLayout = layout }
                         }
-                    } label: {
-                        Image(systemName: "rectangle.expand.vertical").font(.title3)
-                    }.menuStyle(.borderlessButton).help("画面布局")
-
-                    CtrlBtn(icon: "arrow.up.left.and.arrow.down.right") { viewModel.toggleFullscreen() }.help("全屏 (F)")
-
-                    CtrlBtn(icon: "rectangle.inset.bottomright.filled") { viewModel.togglePiP() }.help("画中画")
-                }
-            }.padding(.horizontal, 16).padding(.vertical, 10)
+                    }
+                    Button("截图（⌘S）") { viewModel.takeScreenshot() }
+                    Button("画中画（P）") { viewModel.togglePiP() }
+                    Button("停止播放") { viewModel.stopPlayback() }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }.menuStyle(.borderlessButton).fixedSize().help("更多播放选项")
+                CtrlBtn(icon: "slider.horizontal.3") { showQuickSettings.toggle() }.help("快速设置")
+                CtrlBtn(icon: "arrow.up.left.and.arrow.down.right") { viewModel.toggleFullscreen() }.help("全屏（F）")
+            }
         }
-        .background(LinearGradient(gradient: Gradient(colors: [.clear, .black.opacity(0.85)]),
-                                   startPoint: .top, endPoint: .bottom))
+        .padding(.horizontal, 20).padding(.vertical, 14)
+        .modifier(PlayerSurface())
+        .shadow(color: .black.opacity(0.16), radius: 16, y: 6)
+        .padding(16)
+    }
+}
+
+struct PlaybackTimeline: View {
+    @EnvironmentObject var viewModel: PlayerViewModel
+    var body: some View {
+        HStack(spacing: 12) {
+            Text(viewModel.formatTime(viewModel.isScrubbing ? viewModel.scrubTarget : viewModel.currentTime))
+            Slider(value: Binding(
+                get: {
+                    guard viewModel.duration > 0 else { return 0 }
+                    let time = viewModel.isScrubbing ? viewModel.scrubTarget : viewModel.currentTime
+                    return max(0, min(1, time / viewModel.duration))
+                },
+                set: { viewModel.scrubTarget = $0 * viewModel.duration }
+            ), in: 0...1, onEditingChanged: { editing in
+                if editing { viewModel.beginScrubbing() }
+                else { viewModel.seek(to: viewModel.scrubTarget) }
+            })
+            .disabled(viewModel.duration <= 0)
+            .accessibilityLabel("播放进度")
+            Text(viewModel.formatTime(viewModel.duration))
+                .foregroundColor(.secondary)
+        }
+        .font(.system(size: 11, weight: .medium, design: .monospaced))
     }
 }
 
 struct CtrlBtn: View {
     let icon: String
-    var size: Font = .title3
+    var size: Font = .body
     let action: () -> Void
     var body: some View {
         Button(action: action) {
-            Image(systemName: icon).font(size).foregroundColor(.white)
+            Image(systemName: icon).font(size)
+                .frame(width: 28, height: 28).contentShape(Rectangle())
         }.buttonStyle(.plain)
     }
 }
@@ -454,7 +438,8 @@ struct QuickSettingsPanel: View {
             }
         }
         .frame(width: 260)
-        .background(Color(nsColor: .windowBackgroundColor).opacity(0.95))
+        .modifier(PlayerSurface())
+        .shadow(color: .black.opacity(0.2), radius: 20, y: 8)
     }
 }
 
@@ -477,63 +462,98 @@ struct QSSlider: View {
 
 struct WelcomeView: View {
     @EnvironmentObject var viewModel: PlayerViewModel
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
-        VStack(spacing: 24) {
-            Image(systemName: "play.rectangle.fill")
-                .font(.system(size: 80)).foregroundColor(.accentColor)
-                .shadow(color: .accentColor.opacity(0.3), radius: 20)
-
-            VStack(spacing: 8) {
-                Text("Mocpot").font(.largeTitle).fontWeight(.bold).foregroundColor(.white)
-                Text("全功能视频播放器").font(.title3).foregroundColor(.gray)
-            }
-
-            VStack(spacing: 12) {
-                Text("将视频文件拖放至此").foregroundColor(.gray)
-                Text("或").foregroundColor(.gray)
+        let palette = PlayerPalette(scheme: scheme)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 28) {
                 HStack(spacing: 16) {
-                    Button("打开文件") { viewModel.openFilePanel() }
-                        .buttonStyle(.bordered).controlSize(.large)
-                    Button("导入文件夹") { viewModel.openFolderPanel() }
-                        .buttonStyle(.bordered).controlSize(.large)
+                    Image("MocpotLogo")
+                        .resizable().scaledToFit()
+                        .frame(width: 80, height: 80)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Mocpot").font(.system(size: 32, weight: .bold, design: .rounded))
+                        Text("每一种视角，都值得沉浸").font(.callout).foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    Text("你的私人放映室").font(.caption).foregroundColor(.secondary)
                 }
-            }.padding(.top, 10)
 
-            HStack(spacing: 40) {
-                FeatureBadge(icon: "play.tv", title: "标准播放", subtitle: "支持所有格式")
-                FeatureBadge(icon: "3d", title: "3D 视频", subtitle: "左右/上下/红蓝")
-                FeatureBadge(icon: "visionpro", title: "VR 全景", subtitle: "360° 沉浸体验")
-            }.padding(.top, 20)
+                VStack(spacing: 18) {
+                Image("MocpotLogo").resizable().scaledToFit().frame(width: 48, height: 48)
+                    VStack(spacing: 6) {
+                        Text("开始一场放映").font(.title2.weight(.semibold))
+                        Text("拖入视频，或选择本地文件").foregroundColor(.secondary)
+                    }
+                    HStack(spacing: 12) {
+                        Button { viewModel.openFilePanel() } label: {
+                            Label("打开视频", systemImage: "play.fill").padding(.horizontal, 8)
+                        }.buttonStyle(.borderedProminent).controlSize(.large)
+                        .tint(Color(red: 0.12, green: 0.34, blue: 0.72))
+                        Button { viewModel.openFolderPanel() } label: {
+                            Label("导入文件夹", systemImage: "folder").padding(.horizontal, 8)
+                        }.buttonStyle(.bordered).controlSize(.large)
+                    }
+                    Text("⌘ O  打开文件").font(.system(.caption, design: .monospaced)).foregroundColor(.secondary)
+                }
+                .padding(28).frame(maxWidth: .infinity)
+                .modifier(PlayerSurface(radius: 20))
 
-            if !viewModel.recentFiles.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("最近播放").font(.caption).foregroundColor(.gray)
-                    ForEach(viewModel.recentFiles.prefix(5), id: \.self) { url in
-                        Button(action: { viewModel.openFile(url: url) }) {
-                            HStack {
-                                Image(systemName: "clock")
-                                Text(url.lastPathComponent).lineLimit(1)
-                                Spacer()
+                HStack(spacing: 12) {
+                    FeatureBadge(icon: "play.tv", title: "日常观影", subtitle: "专注每一帧")
+                    FeatureBadge(icon: "cube", title: "3D 视频", subtitle: "切换播放视角")
+                    FeatureBadge(icon: "globe", title: "360° 全景", subtitle: "拖拽探索画面")
+                }
+
+                if !viewModel.recentFiles.isEmpty {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Text("最近播放").font(.headline)
+                            Spacer()
+                            Text("继续上次的精彩").font(.caption).foregroundColor(.secondary)
+                        }
+                        VStack(spacing: 0) {
+                            ForEach(viewModel.recentFiles.prefix(5), id: \.self) { url in
+                                Button { viewModel.openFile(url: url) } label: {
+                                    HStack(spacing: 12) {
+                                        Image(systemName: "film").foregroundColor(palette.accent)
+                                            .frame(width: 32, height: 32)
+                                            .background(palette.inset, in: RoundedRectangle(cornerRadius: 8))
+                                        VStack(alignment: .leading, spacing: 3) {
+                                            Text(url.deletingPathExtension().lastPathComponent).font(.callout).lineLimit(1)
+                                            Text(url.pathExtension.uppercased()).font(.caption2).foregroundColor(.secondary)
+                                        }
+                                        Spacer()
+                                        Image(systemName: "play.circle").foregroundColor(.secondary)
+                                    }.padding(12).contentShape(Rectangle())
+                                }.buttonStyle(.plain)
+                                if url != viewModel.recentFiles.prefix(5).last { Divider().padding(.leading, 56) }
                             }
-                            .font(.caption).foregroundColor(.accentColor)
-                        }.buttonStyle(.plain)
+                        }.modifier(PlayerSurface(radius: 12))
                     }
                 }
-                .frame(maxWidth: 400)
-                .padding(.top, 20)
             }
+            .padding(36).frame(maxWidth: 820).frame(maxWidth: .infinity)
         }
+        .foregroundColor(.primary)
+        .background(palette.canvas)
     }
 }
 
 struct FeatureBadge: View {
     let icon: String, title: String, subtitle: String
+    @Environment(\.colorScheme) private var scheme
     var body: some View {
-        VStack(spacing: 5) {
-            Image(systemName: icon).font(.title)
-            Text(title).font(.caption).fontWeight(.semibold)
-            Text(subtitle).font(.caption2).foregroundColor(.gray)
-        }.foregroundColor(.accentColor).frame(width: 100)
+        HStack(spacing: 10) {
+            Image(systemName: icon).font(.title2).foregroundColor(PlayerPalette(scheme: scheme).accent)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title).font(.callout.weight(.medium))
+                Text(subtitle).font(.caption).foregroundColor(.secondary)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(16).frame(maxWidth: .infinity)
+        .modifier(PlayerSurface(radius: 12))
     }
 }

@@ -15,6 +15,9 @@ struct MocpotApp: App {
                 .frame(minWidth: 800, minHeight: 500)
                 .onAppear {
                     setupMenu()
+                    DispatchQueue.main.async {
+                        NSApp.keyWindow?.identifier = NSUserInterfaceItemIdentifier("MocpotPlayer")
+                    }
                 }
         }
         .windowStyle(.titleBar)
@@ -25,6 +28,7 @@ struct MocpotApp: App {
             SettingsView()
                 .environmentObject(viewModel)
                 .environmentObject(themeManager)
+                .preferredColorScheme(themeManager.colorScheme)
         }
         #endif
     }
@@ -53,47 +57,59 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    private var keyMonitor: Any?
+
+    func applicationWillTerminate(_ notification: Notification) {
+        viewModel?.persistCurrentPosition()
+        viewModel?.saveSettings()
+        if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
+    }
+
     func setupGlobalHotkeys() {
-        NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            self.handleKeyDown(event)
-            return event
+        guard keyMonitor == nil else { return }
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self, self.handleKeyDown(event) else { return event }
+            return nil
         }
     }
 
-    func handleKeyDown(_ event: NSEvent) {
+    func handleKeyDown(_ event: NSEvent) -> Bool {
+        guard let vm = viewModel, let window = NSApp.keyWindow,
+              window.identifier?.rawValue == "MocpotPlayer",
+              window.styleMask.contains(.resizable), window.attachedSheet == nil,
+              !(window.firstResponder is NSTextView), !(window.firstResponder is NSTextField) else { return false }
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        let isCommand = flags.contains(.command)
-        let keyCode = event.keyCode
-
-        guard let vm = viewModel else { return }
-
-        // F key = fullscreen (no modifiers)
-        if !isCommand && keyCode == 3 {
-            vm.toggleFullscreen()
-            return
-        }
-
-        // Space = play/pause (no modifiers)
-        if !isCommand && keyCode == 49 {
-            vm.togglePlayPause()
-            return
-        }
-
-        // P key = Picture-in-Picture (no modifiers)
-        if !isCommand && keyCode == 35 {
-            vm.togglePiP()
-            return
-        }
-
-        if isCommand {
-            switch keyCode {
-            case 49:
-                vm.togglePlayPause()
-            case 3:
-                vm.toggleFullscreen()
-            default:
-                break
+            .subtracting([.capsLock, .numericPad, .function])
+        if flags == .command {
+            switch event.keyCode {
+            case 123: vm.seekBackward(seconds: 5)
+            case 124: vm.seekForward(seconds: 5)
+            case 126: vm.setVolume(vm.volume + 0.05)
+            case 125: vm.setVolume(vm.volume - 0.05)
+            case 1: vm.takeScreenshot()
+            case 15: vm.toggleLooping()
+            case 33: vm.previousTrack()
+            case 30: vm.nextTrack()
+            default: return false
             }
+            return true
         }
+        guard flags.isEmpty, vm.currentVideoURL != nil else { return false }
+        switch event.keyCode {
+        case 49, 36: vm.togglePlayPause()
+        case 3: vm.toggleFullscreen()
+        case 35: vm.togglePiP()
+        case 46: vm.toggleMute()
+        case 123: vm.seekBackward()
+        case 124: vm.seekForward()
+        case 0: vm.setLoopPointA()
+        case 11: vm.setLoopPointB()
+        case 51: vm.clearABLoop()
+        case 53:
+            if window.styleMask.contains(.fullScreen) { vm.toggleFullscreen() }
+            else { vm.stopPlayback() }
+        default: return false
+        }
+        return true
     }
 }

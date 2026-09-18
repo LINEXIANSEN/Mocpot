@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct PlaylistView: View {
+    @Environment(\.colorScheme) private var scheme
     @EnvironmentObject var viewModel: PlayerViewModel
     @State private var searchText = ""
     @State private var selectedItems: Set<URL> = []
@@ -16,31 +17,34 @@ struct PlaylistView: View {
         var id: String { rawValue }
     }
 
-    var filteredPlaylist: [URL] {
+    @State private var displayedItems: [URL] = []
+
+    private func refreshItems() {
         var items = viewModel.playlist
         if !searchText.isEmpty {
             items = items.filter { $0.lastPathComponent.localizedCaseInsensitiveContains(searchText) }
         }
         switch sortOrder {
         case .orderAdded:
-            return items
+            break
         case .nameAsc:
-            return items.sorted { $0.lastPathComponent.localizedCaseInsensitiveCompare($1.lastPathComponent) == .orderedAscending }
+            items.sort { $0.lastPathComponent.localizedCaseInsensitiveCompare($1.lastPathComponent) == .orderedAscending }
         case .nameDesc:
-            return items.sorted { $0.lastPathComponent.localizedCaseInsensitiveCompare($1.lastPathComponent) == .orderedDescending }
+            items.sort { $0.lastPathComponent.localizedCaseInsensitiveCompare($1.lastPathComponent) == .orderedDescending }
         case .dateAsc:
-            return items.sorted { url1, url2 in
+            items.sort { url1, url2 in
                 let d1 = (try? url1.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? .distantPast
                 let d2 = (try? url2.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? .distantPast
                 return d1 < d2
             }
         case .dateDesc:
-            return items.sorted { url1, url2 in
+            items.sort { url1, url2 in
                 let d1 = (try? url1.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? .distantPast
                 let d2 = (try? url2.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? .distantPast
                 return d1 > d2
             }
         }
+        displayedItems = items
     }
 
     var body: some View {
@@ -58,7 +62,7 @@ struct PlaylistView: View {
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass").foregroundColor(.secondary)
                 TextField("搜索...", text: $searchText).textFieldStyle(.plain)
-            }.padding(8).background(Color(nsColor: .controlBackgroundColor)).cornerRadius(6)
+            }.padding(8).background(PlayerPalette(scheme: scheme).inset).cornerRadius(6)
              .padding(.horizontal, 12).padding(.top, 8)
 
             HStack {
@@ -93,14 +97,14 @@ struct PlaylistView: View {
             Divider().padding(.top, 8)
 
             List(selection: $selectedItems) {
-                ForEach(filteredPlaylist, id: \.self) { url in
+                ForEach(displayedItems, id: \.self) { url in
                     PlaylistItemView(url: url, isSelected: viewModel.currentVideoURL == url)
                         .tag(url)
                         .onTapGesture(count: 2) { viewModel.playURL(url) }
                         .contextMenu {
                             Button("播放") { viewModel.playURL(url) }
-                            Button("3D 播放") { viewModel.threeDMode = .sideBySide; viewModel.playURL(url) }
-                            Button("VR 播放") { viewModel.vrMode = .mono; viewModel.playURL(url) }
+                            Button("3D 播放") { viewModel.playURL(url); viewModel.vrMode = .none; viewModel.threeDMode = .sideBySide }
+                            Button("VR 播放") { viewModel.playURL(url); viewModel.threeDMode = .none; viewModel.vrMode = .mono }
                             Divider()
                             Button("在 Finder 中显示") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
                             Button("复制路径") {
@@ -112,6 +116,16 @@ struct PlaylistView: View {
                         }
                 }
             }.listStyle(.sidebar)
+            .scrollContentBackground(.hidden)
+            .overlay {
+                if displayedItems.isEmpty {
+                    VStack(spacing: 10) {
+                        Image(systemName: searchText.isEmpty ? "music.note.list" : "magnifyingglass").font(.title)
+                        Text(searchText.isEmpty ? "播放列表还是空的" : "没有匹配的视频").font(.callout)
+                        Text(searchText.isEmpty ? "打开视频，开始添加" : "试试其他关键词").font(.caption)
+                    }.foregroundColor(.secondary).allowsHitTesting(false)
+                }
+            }
 
             Divider()
 
@@ -130,7 +144,15 @@ struct PlaylistView: View {
                     Label("清空", systemImage: "trash").font(.caption)
                 }.buttonStyle(.borderless).foregroundColor(.red)
             }.padding(.horizontal, 12).padding(.vertical, 8)
-        }.background(Color(nsColor: .windowBackgroundColor))
+        }
+        .foregroundColor(.primary)
+        .background(.regularMaterial)
+        .background(PlayerPalette(scheme: scheme).surface.opacity(0.62))
+        .overlay(alignment: .leading) { Rectangle().fill(PlayerPalette(scheme: scheme).border).frame(width: 1) }
+        .onAppear { refreshItems() }
+        .onChange(of: viewModel.playlist) { _ in refreshItems() }
+        .onChange(of: searchText) { _ in refreshItems() }
+        .onChange(of: sortOrder) { _ in refreshItems() }
     }
 }
 

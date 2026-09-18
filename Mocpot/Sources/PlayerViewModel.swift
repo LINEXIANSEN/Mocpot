@@ -105,9 +105,11 @@ class PlayerViewModel: NSObject, ObservableObject {
     @Published var isPlaying = false
     @Published var currentTime: Double = 0
     @Published var duration: Double = 0
-    @Published var volume: Double = 1.0
-    @Published var isMuted = false
-    @Published var playbackSpeed: PlaybackSpeed = .normal
+    @Published var volume: Double = 1.0 { didSet { player?.volume = Float(volume) } }
+    @Published var isMuted = false { didSet { player?.isMuted = isMuted } }
+    @Published var playbackSpeed: PlaybackSpeed = .normal {
+        didSet { if isPlaying { player?.rate = playbackSpeed.value } }
+    }
     @Published var vrMode: VRMode = .none
     @Published var threeDMode: ThreeDMode = .none
     @Published var videoLayout: VideoLayout = .original
@@ -184,16 +186,31 @@ class PlayerViewModel: NSObject, ObservableObject {
     @Published var scrollAction: String = "快进/快退"
 
     private var timeObserverToken: Any?
-    private var playerItem: AVPlayerItem?
+    @Published var isLoading = false
+    @Published var playbackError: String?
+    private var itemObservation: NSKeyValueObservation?
+    private var endObserver: NSObjectProtocol?
+    private var lastPositionSave = Date.distantPast
+    private var seekGeneration = 0
+    private var wantsPlayback = false
 
-    override init() {
+
+    private let defaults: UserDefaults
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
         super.init()
+        defaults.register(defaults: [
+            "resumePlayback": true, "autoPlayNext": true,
+            "rememberLastPosition": true, "showSubtitleBackground": true
+        ])
         loadRecentFiles()
         loadSettings()
     }
 
     deinit {
         removeTimeObserver()
+        if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
     }
 
     func openFilePanel() {
@@ -215,38 +232,87 @@ class PlayerViewModel: NSObject, ObservableObject {
     }
 
     func openFile(url: URL) {
-        stopPlayback()
+        guard validateLocalMediaURL(url) else {
+            playbackError = "只能打开本地视频文件。"
+            return
+        }
+        persistCurrentPosition()
+        player?.pause()
+        removeTimeObserver()
+        itemObservation = nil
+        if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
+        endObserver = nil
+        seekGeneration += 1
+        isScrubbing = false
+        currentTime = 0
+        duration = 0
+        clearABLoop()
+        videoMetadata = VideoMetadata()
+        playbackError = nil
+        isLoading = true
+        isPlaying = false
+        wantsPlayback = true
 
-        let asset = AVURLAsset(url: url)
-        let item = AVPlayerItem(asset: asset)
-
+        let item = AVPlayerItem(url: url)
         let newPlayer = AVPlayer(playerItem: item)
         newPlayer.allowsExternalPlayback = true
-        newPlayer.automaticallyWaitsToMinimizeStalling = false
+        newPlayer.automaticallyWaitsToMinimizeStalling = true
         newPlayer.volume = Float(volume)
         newPlayer.isMuted = isMuted
         player = newPlayer
-
         currentVideoURL = url
+        currentPlaylistIndex = playlist.firstIndex(of: url) ?? -1
         videoTitle = url.deletingPathExtension().lastPathComponent
-
         loadMetadata(url: url)
         saveRecentFile(url: url)
         detectVideoType(url: url)
         loadSubtitlesForVideo(url: url)
+        setupTimeObserver()
+        lastPositionSave = Date()
 
-        // Wait for player to be ready, then setup time observer and start playback
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-            guard let self = self else { return }
-            self.setupTimeObserver()
-            self.updateVideoInfo()
-            self.player?.play()
-            self.isPlaying = true
+        itemObservation = item.observe(\.status, options: [.initial, .new]) { [weak self] item, _ in
+            DispatchQueue.main.async {
+                guard let self, self.player?.currentItem === item else { return }
+                switch item.status {
+                case .readyToPlay:
+                    guard self.isLoading else { return }
+                    self.isLoading = false
+                    self.updateVideoInfo()
+                    if self.resumePlayback && self.wantsPlayback { self.restorePlaybackPosition(url: url) }
+                    if self.wantsPlayback {
+                        self.player?.rate = self.playbackSpeed.value
+                        self.isPlaying = true
+                    }
+                case .failed:
+                    self.isLoading = false
+                    self.isPlaying = false
+                    self.wantsPlayback = false
+                    self.playbackError = item.error?.localizedDescription ?? "无法播放此文件，请检查文件或编码格式。"
+                default: break
+                }
+            }
         }
+        endObserver = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main
+        ) { [weak self] _ in
+            guard let self, self.player?.currentItem === item else { return }
+            if self.isLooping {
+                self.seek(to: 0)
+                self.player?.rate = self.playbackSpeed.value
+            } else if self.autoPlayNext && (self.shufflePlayback || self.currentPlaylistIndex + 1 < self.playlist.count) {
+                self.nextTrack()
+            } else {
+                self.isPlaying = false
+                self.wantsPlayback = false
+                self.persistCurrentPosition()
+            }
+        }
+    }
 
-        if resumePlayback {
-            restorePlaybackPosition(url: url)
-        }
+    private func validateLocalMediaURL(_ url: URL) -> Bool {
+        guard url.isFileURL else { return false }
+        let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isRegularFileKey])
+        return values?.isDirectory == false && values?.isRegularFile == true
     }
 
     func loadMetadata(url: URL) {
@@ -258,15 +324,13 @@ class PlayerViewModel: NSObject, ObservableObject {
     }
 
     func detectVideoType(url: URL) {
-        let filename = url.lastPathComponent.lowercased()
-        if filename.contains("360") || filename.contains("vr") {
-            vrMode = .mono
-        }
-        if filename.contains("sbs") || filename.contains("side") {
-            threeDMode = .sideBySide
-        }
-        if filename.contains("ou") || filename.contains("top") {
-            threeDMode = .overUnder
+        let tokens = Set(url.deletingPathExtension().lastPathComponent.lowercased()
+            .components(separatedBy: CharacterSet.alphanumerics.inverted))
+        vrMode = tokens.contains("360") || tokens.contains("vr") ? .mono : .none
+        threeDMode = .none
+        if vrMode == .none {
+            if tokens.contains("sbs") { threeDMode = .sideBySide }
+            if tokens.contains("ou") || tokens.contains("tb") { threeDMode = .overUnder }
         }
     }
 
@@ -289,22 +353,24 @@ class PlayerViewModel: NSObject, ObservableObject {
 
     func setupTimeObserver() {
         removeTimeObserver()
-        let interval = CMTime(seconds: 0.1, preferredTimescale: 600)
-        timeObserverToken = player?.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
-            guard let self = self else { return }
+        let interval = CMTime(seconds: 0.25, preferredTimescale: 600)
+        guard let observedPlayer = player else { return }
+        timeObserverToken = observedPlayer.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self, weak observedPlayer] time in
+            guard let self, self.player === observedPlayer, time.seconds.isFinite else { return }
 
             if !self.isScrubbing {
                 self.currentTime = time.seconds
             }
 
-            if self.isABLooping, let a = self.loopPointA, let b = self.loopPointB {
+            if !self.isScrubbing, self.isABLooping, let a = self.loopPointA, let b = self.loopPointB {
                 if time.seconds >= b {
-                    self.player?.seek(to: CMTime(seconds: a, preferredTimescale: 600))
+                    self.seek(to: a)
                 }
             }
 
-            if self.rememberLastPosition, let url = self.currentVideoURL {
-                self.savePlaybackPosition(url: url, position: time.seconds)
+            if !self.isScrubbing, Date().timeIntervalSince(self.lastPositionSave) >= 5 {
+                self.persistCurrentPosition()
+                self.lastPositionSave = Date()
             }
         }
     }
@@ -318,36 +384,92 @@ class PlayerViewModel: NSObject, ObservableObject {
 
     func updateVideoInfo() {
         guard let currentItem = player?.currentItem else { return }
-        duration = currentItem.duration.seconds
+        let seconds = currentItem.duration.seconds
+        duration = seconds.isFinite && seconds > 0 ? seconds : 0
+        videoMetadata.duration = duration
+        let size = currentItem.presentationSize
+        videoMetadata.width = Int(size.width)
+        videoMetadata.height = Int(size.height)
     }
 
     // MARK: - Playback Controls
 
     func togglePlayPause() {
         guard let player = player else { return }
+        if isLoading { wantsPlayback.toggle(); return }
+        guard playbackError == nil, player.currentItem?.status == .readyToPlay else { return }
         if isPlaying {
             player.pause()
             isPlaying = false
+            wantsPlayback = false
+            persistCurrentPosition()
         } else {
+            if duration > 0 && currentTime >= duration - 0.1 { seek(to: 0) }
             player.rate = playbackSpeed.value
             isPlaying = true
+            wantsPlayback = true
         }
     }
 
     func stopPlayback() {
+        persistCurrentPosition()
+        wantsPlayback = false
         player?.pause()
         isPlaying = false
-        currentTime = 0
+        seek(to: 0)
+        clearABLoop()
+    }
+
+    func returnToHome() {
+        persistCurrentPosition()
+        wantsPlayback = false
+        player?.pause()
         removeTimeObserver()
-        loopPointA = nil
-        loopPointB = nil
-        isABLooping = false
+        if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
+        endObserver = nil
+        itemObservation = nil
+        player = nil
+        currentVideoURL = nil
+        isPlaying = false
+        isLoading = false
+        playbackError = nil
+        currentTime = 0
+        duration = 0
+        clearABLoop()
+        vrMode = .none
+        threeDMode = .none
     }
 
     func seek(to time: Double) {
-        let cmTime = CMTime(seconds: time, preferredTimescale: 600)
-        player?.seek(to: cmTime, toleranceBefore: .zero, toleranceAfter: .zero)
-        currentTime = time
+        guard time.isFinite, duration > 0, let player else {
+            isScrubbing = false
+            return
+        }
+        let target = max(0, min(time, duration))
+        seekGeneration += 1
+        let generation = seekGeneration
+        isScrubbing = true
+        scrubTarget = target
+        currentTime = target
+        player.currentItem?.cancelPendingSeeks()
+        player.seek(to: CMTime(seconds: target, preferredTimescale: 600),
+                    toleranceBefore: .zero, toleranceAfter: .zero) { [weak self, weak player] _ in
+            DispatchQueue.main.async {
+                guard let self, self.player === player, self.seekGeneration == generation else { return }
+                self.isScrubbing = false
+            }
+        }
+    }
+
+    func beginScrubbing() {
+        scrubTarget = currentTime
+        isScrubbing = true
+    }
+
+    func persistCurrentPosition() {
+        guard rememberLastPosition, let url = currentVideoURL,
+              currentTime.isFinite, duration > 0 else { return }
+        savePlaybackPosition(url: url, position: currentTime)
     }
 
     func seekForward(seconds: Double = 10) {
@@ -407,8 +529,7 @@ class PlayerViewModel: NSObject, ObservableObject {
     // MARK: - Screenshot
 
     func takeScreenshot() {
-        guard let player = player,
-              let url = currentVideoURL else { return }
+        guard player != nil, let url = currentVideoURL else { return }
 
         let time = CMTime(seconds: currentTime, preferredTimescale: 600)
         let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url))
@@ -417,7 +538,9 @@ class PlayerViewModel: NSObject, ObservableObject {
         generator.generateCGImagesAsynchronously(forTimes: [NSValue(time: time)]) { [weak self] _, cgImage, _, _, error in
             guard let cgImage = cgImage, error == nil else { return }
 
-            let filename = "\(url.deletingPathExtension().lastPathComponent)_\(Int(self?.currentTime ?? 0))s.png"
+            let baseName = url.deletingPathExtension().lastPathComponent
+                .components(separatedBy: CharacterSet(charactersIn: "/:\\0")).joined()
+            let filename = "\(baseName)_\(Int(self?.currentTime ?? 0))s_\(UUID().uuidString.prefix(8)).png"
             let saveURL = self?.screenshotDirectory.appendingPathComponent(filename) ?? FileManager.default.temporaryDirectory.appendingPathComponent(filename)
 
             let nsImage = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
@@ -456,9 +579,7 @@ class PlayerViewModel: NSObject, ObservableObject {
 
     func removeFromPlaylist(_ url: URL) {
         playlist.removeAll { $0 == url }
-        if currentPlaylistIndex >= playlist.count {
-            currentPlaylistIndex = max(0, playlist.count - 1)
-        }
+        currentPlaylistIndex = currentVideoURL.flatMap { playlist.firstIndex(of: $0) } ?? -1
     }
 
     func clearPlaylist() {
@@ -468,11 +589,12 @@ class PlayerViewModel: NSObject, ObservableObject {
 
     func shufflePlaylist() {
         playlist.shuffle()
-        currentPlaylistIndex = 0
+        currentPlaylistIndex = currentVideoURL.flatMap { playlist.firstIndex(of: $0) } ?? -1
     }
 
     func movePlaylistItem(from source: IndexSet, to destination: Int) {
         playlist.move(fromOffsets: source, toOffset: destination)
+        currentPlaylistIndex = currentVideoURL.flatMap { playlist.firstIndex(of: $0) } ?? -1
     }
 
     // MARK: - Window
@@ -546,11 +668,17 @@ class PlayerViewModel: NSObject, ObservableObject {
     }
 
     func importFolder(url: URL) {
+        guard url.isFileURL else { return }
+        let accessed = url.startAccessingSecurityScopedResource()
+        defer { if accessed { url.stopAccessingSecurityScopedResource() } }
         let videoExtensions = ["mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "m4v", "mpg", "mpeg", "ts", "mts", "m2ts", "3gp", "ogv"]
 
         guard let items = try? FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: [.creationDateKey, .contentModificationDateKey]) else { return }
 
-        var videoFiles = items.filter { videoExtensions.contains($0.pathExtension.lowercased()) }
+        var videoFiles = items.filter {
+            guard videoExtensions.contains($0.pathExtension.lowercased()) else { return false }
+            return validateLocalMediaURL($0)
+        }
 
         switch folderSortOrder {
         case .nameAsc:
@@ -570,7 +698,7 @@ class PlayerViewModel: NSObject, ObservableObject {
                 return d1 > d2
             }
         case .natural:
-            break
+            videoFiles.sort { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
         }
 
         for video in videoFiles {
@@ -588,18 +716,17 @@ class PlayerViewModel: NSObject, ObservableObject {
     // MARK: - Playback Position
 
     func savePlaybackPosition(url: URL, position: Double) {
-        var positions = UserDefaults.standard.dictionary(forKey: "playbackPositions") as? [String: Double] ?? [:]
+        var positions = defaults.dictionary(forKey: "playbackPositions") as? [String: Double] ?? [:]
         positions[url.absoluteString] = position
-        UserDefaults.standard.set(positions, forKey: "playbackPositions")
+        defaults.set(positions, forKey: "playbackPositions")
     }
 
     func restorePlaybackPosition(url: URL) {
-        guard let positions = UserDefaults.standard.dictionary(forKey: "playbackPositions") as? [String: Double],
+        guard let positions = defaults.dictionary(forKey: "playbackPositions") as? [String: Double],
               let position = positions[url.absoluteString],
               position > 3 else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-            self.seek(to: position)
-        }
+        guard currentVideoURL == url, position < duration - 3 else { return }
+        seek(to: position)
     }
 
     // MARK: - Recent Files
@@ -615,12 +742,15 @@ class PlayerViewModel: NSObject, ObservableObject {
 
     func saveRecentFiles() {
         let urls = recentFiles.map { $0.absoluteString }
-        UserDefaults.standard.set(urls, forKey: "recentFiles")
+        defaults.set(urls, forKey: "recentFiles")
     }
 
     func loadRecentFiles() {
-        guard let urls = UserDefaults.standard.stringArray(forKey: "recentFiles") else { return }
-        recentFiles = urls.compactMap { URL(string: $0) }
+        guard let urls = defaults.stringArray(forKey: "recentFiles") else { return }
+        recentFiles = urls.compactMap { value in
+            guard let url = URL(string: value), validateLocalMediaURL(url) else { return nil }
+            return url
+        }
     }
 
     func clearRecentFiles() {
@@ -631,7 +761,6 @@ class PlayerViewModel: NSObject, ObservableObject {
     // MARK: - Settings Persistence
 
     func saveSettings() {
-        let defaults = UserDefaults.standard
         defaults.set(volume, forKey: "volume")
         defaults.set(isMuted, forKey: "isMuted")
         defaults.set(playbackSpeed.rawValue, forKey: "playbackSpeed")
@@ -654,8 +783,7 @@ class PlayerViewModel: NSObject, ObservableObject {
     }
 
     func loadSettings() {
-        let defaults = UserDefaults.standard
-        volume = defaults.double(forKey: "volume") > 0 ? defaults.double(forKey: "volume") : 1.0
+        volume = defaults.object(forKey: "volume") as? Double ?? 1.0
         isMuted = defaults.bool(forKey: "isMuted")
         if let speedStr = defaults.string(forKey: "playbackSpeed"),
            let speed = PlaybackSpeed(rawValue: speedStr) {

@@ -68,6 +68,7 @@ struct ContentView: View {
         .tint(PlayerPalette(scheme: scheme).accent)
         .accentColor(PlayerPalette(scheme: scheme).accent)
         .frame(minWidth: viewModel.showPlaylist ? 960 : 800, minHeight: 500)
+        .toolbar(viewModel.isFullscreen ? .hidden : .visible, for: .windowToolbar)
         .overlay(
             RoundedRectangle(cornerRadius: 0)
                 .stroke(isDragOver ? Color.accentColor : Color.clear, lineWidth: 3)
@@ -182,7 +183,9 @@ struct PlaybackChrome<Surface: View>: View {
         ZStack(alignment: .trailing) {
             surface
             VStack {
-                TopBar()
+                if !viewModel.isFullscreen {
+                    TopBar()
+                }
                 Spacer()
                 BottomControls(showQuickSettings: $showQuickSettings)
             }
@@ -209,7 +212,9 @@ struct PlaybackChrome<Surface: View>: View {
         hideTask?.cancel()
         guard viewModel.isPlaying, !viewModel.isScrubbing, !showQuickSettings else { return }
         hideTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            // Keep the video unobstructed during playback. Controls reappear as soon
+            // as the pointer moves, but fade out quickly when it leaves the player.
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
             guard !Task.isCancelled else { return }
             controlsVisible = false
         }
@@ -335,7 +340,9 @@ struct BottomControls: View {
                     Image(systemName: "ellipsis.circle")
                 }.menuStyle(.borderlessButton).fixedSize().help("更多播放选项")
                 CtrlBtn(icon: "slider.horizontal.3") { showQuickSettings.toggle() }.help("快速设置")
-                CtrlBtn(icon: "arrow.up.left.and.arrow.down.right") { viewModel.toggleFullscreen() }.help("全屏（F）")
+                CtrlBtn(icon: viewModel.isFullscreen ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right") {
+                    viewModel.toggleFullscreen()
+                }.help(viewModel.isFullscreen ? "退出全屏（F）" : "全屏（F）")
             }
         }
         .padding(.horizontal, 20).padding(.vertical, 14)

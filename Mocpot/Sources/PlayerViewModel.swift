@@ -193,6 +193,7 @@ class PlayerViewModel: NSObject, ObservableObject {
     private var lastPositionSave = Date.distantPast
     private var seekGeneration = 0
     private var wantsPlayback = false
+    private var fullscreenObservers: [NSObjectProtocol] = []
 
 
     private let defaults: UserDefaults
@@ -206,11 +207,20 @@ class PlayerViewModel: NSObject, ObservableObject {
         ])
         loadRecentFiles()
         loadSettings()
+        fullscreenObservers = [
+            NotificationCenter.default.addObserver(forName: NSWindow.didEnterFullScreenNotification, object: nil, queue: .main) { [weak self] _ in
+                self?.isFullscreen = true
+            },
+            NotificationCenter.default.addObserver(forName: NSWindow.didExitFullScreenNotification, object: nil, queue: .main) { [weak self] _ in
+                self?.isFullscreen = false
+            }
+        ]
     }
 
     deinit {
         removeTimeObserver()
         if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
+        fullscreenObservers.forEach { NotificationCenter.default.removeObserver($0) }
     }
 
     func openFilePanel() {

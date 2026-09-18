@@ -36,6 +36,7 @@ struct SettingsView: View {
         .background(PlayerPalette(scheme: scheme).canvas.opacity(0.72))
         .tint(PlayerPalette(scheme: scheme).accent)
         .accentColor(PlayerPalette(scheme: scheme).accent)
+        .onDisappear { viewModel.saveSettings() }
         .onAppear {
             NSWindow.allowsAutomaticWindowTabbing = false
         }
@@ -45,12 +46,6 @@ struct SettingsView: View {
 // MARK: - General Tab
 
 struct GeneralTab: View {
-    @AppStorage("launchBehavior") private var launchBehavior = "显示欢迎界面"
-    @AppStorage("showWelcomeScreen") private var showWelcomeScreen = true
-    @AppStorage("checkUpdateOnLaunch") private var checkUpdateOnLaunch = true
-    @AppStorage("openPanelDirectory") private var openPanelDirectory = "上次打开的目录"
-    @AppStorage("showRecentFiles") private var showRecentFiles = true
-    @AppStorage("autoScanSiblings") private var autoScanSiblings = true
     @EnvironmentObject var themeManager: ThemeManager
 
     var body: some View {
@@ -62,27 +57,9 @@ struct GeneralTab: View {
             }
 
             Section("启动") {
-                Picker("启动时", selection: $launchBehavior) {
-                    Text("显示欢迎界面").tag("显示欢迎界面")
-                    Text("打开最近文件").tag("打开最近文件")
-                    Text("空白界面").tag("空白界面")
-                }
-
-                Toggle("显示欢迎界面", isOn: $showWelcomeScreen)
-                Toggle("自动检查更新", isOn: $checkUpdateOnLaunch)
-            }
-
-            Section("文件管理") {
-                Picker("打开面板初始目录", selection: $openPanelDirectory) {
-                    Text("上次打开的目录").tag("上次打开的目录")
-                    Text("桌面").tag("桌面")
-                    Text("下载").tag("下载")
-                    Text("影片").tag("影片")
-                    Text("自定义...").tag("自定义...")
-                }
-
-                Toggle("显示最近打开的文件", isOn: $showRecentFiles)
-                Toggle("自动扫描同目录视频文件", isOn: $autoScanSiblings)
+                Text("播放窗口始终从欢迎页开始，可从最近项目快速继续播放。")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
         }
         .formStyle(.grouped)
@@ -99,15 +76,9 @@ struct PlaybackTab: View {
         Form {
             Section("播放行为") {
                 Toggle("记住上次播放位置", isOn: $viewModel.rememberLastPosition)
-                Toggle("恢复播放位置", isOn: $viewModel.resumePlayback)
                 Toggle("自动播放下一个", isOn: $viewModel.autoPlayNext)
                 Toggle("随机播放", isOn: $viewModel.shufflePlayback)
                 Toggle("循环播放", isOn: $viewModel.isLooping)
-            }
-
-            Section("画中画") {
-                Toggle("退出全屏时自动进入画中画", isOn: $viewModel.autoStartPiP)
-                Toggle("最小化时自动进入画中画", isOn: $viewModel.pauseWhenMinimized)
             }
 
             Section("播放速度") {
@@ -119,13 +90,6 @@ struct PlaybackTab: View {
                 .pickerStyle(.segmented)
             }
 
-            Section("快进快退") {
-                HStack {
-                    Text("快进步长：")
-                    Stepper("\(Int(viewModel.currentTime)) → +10s", value: .constant(10), in: 1...60)
-                        .disabled(true)
-                }
-            }
         }
         .formStyle(.grouped)
         .padding(12)
@@ -146,9 +110,9 @@ struct VideoTab: View {
                     }
                 }
 
-                Toggle("自动适应窗口大小", isOn: $viewModel.autoFit)
-                Toggle("硬件解码", isOn: $viewModel.hardwareDecoding)
-                Toggle("反交错", isOn: $viewModel.deinterlace)
+                Text("播放器会根据视频类型自动选择合适的解码和画面比例。")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
 
             Section("色彩调整") {
@@ -234,8 +198,6 @@ struct AudioTab: View {
             }
 
             Section("音频处理") {
-                Toggle("音频直通（Passthrough）", isOn: $viewModel.audioPassthrough)
-
                 HStack {
                     Text("音频延迟：")
                     Stepper(value: $viewModel.audioDelay, in: -5...5, step: 0.1) {
@@ -276,15 +238,12 @@ struct SubtitleTab: View {
                 ColorPicker("背景颜色", selection: $viewModel.subtitleBackgroundColor)
             }
 
-            Section("字幕加载") {
+            Section("字幕编码") {
                 Picker("默认编码", selection: $viewModel.subtitleEncoding) {
                     ForEach(SubtitleEncoding.allCases) { enc in
                         Text(enc.rawValue).tag(enc)
                     }
                 }
-
-                Toggle("自动加载同名字幕文件", isOn: .constant(true))
-                Toggle("自动加载同目录字幕文件", isOn: .constant(true))
             }
 
             Section("字幕延迟") {
@@ -331,8 +290,9 @@ struct ControlTab: View {
             }
 
             Section("触控板手势") {
-                Toggle("双指缩放", isOn: .constant(true))
-                Toggle("三指滑动", isOn: .constant(true))
+                Text("双指缩放和三指滑动由系统手势自动处理。")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
         }
         .formStyle(.grouped)
@@ -420,7 +380,7 @@ struct AboutTab: View {
                 .font(.title)
                 .fontWeight(.bold)
 
-            Text("版本 1.0.0")
+            Text("版本 1.2.0")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
 

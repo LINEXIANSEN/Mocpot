@@ -28,6 +28,8 @@ struct ThemeSnapshots {
         vm.playlist = vm.recentFiles
         vm.duration = 120
         vm.currentTime = 36
+        vm.subtitleCues = [SubtitleCue(start: 0, end: 120, text: "字幕样式预览 · Subtitle preview")]
+        vm.subtitleTracks = [SubtitleTrack(id: 0, name: "示例字幕.srt", language: "中文")]
         let folder = URL(fileURLWithPath: CommandLine.arguments[1])
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         for scheme in [ColorScheme.light, .dark] {
@@ -37,6 +39,9 @@ struct ThemeSnapshots {
                 ("welcome", AnyView(WelcomeView()), CGSize(width: 1000, height: 800)),
                 ("controls", AnyView(VStack { BottomControls(showQuickSettings: .constant(false)); QuickSettingsPanel(showPanel: .constant(true)) }.padding(20).background(Color.black)), CGSize(width: 900, height: 700)),
                 ("settings", AnyView(GeneralTab()), CGSize(width: 660, height: 550)),
+                ("subtitle-settings", AnyView(ScrollView { SubtitleTab() }), CGSize(width: 660, height: 580)),
+                ("audio-settings", AnyView(AudioTab()), CGSize(width: 660, height: 580)),
+                ("subtitles", AnyView(PlaybackChrome { Color.black }), CGSize(width: 1000, height: 700)),
                 ("playlist", AnyView(PlaylistView()), CGSize(width: 280, height: 600)),
                 ("playlist-rows", AnyView(VStack {
                     PlaylistItemView(url: vm.recentFiles[0], isSelected: true)

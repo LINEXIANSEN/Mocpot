@@ -18,7 +18,7 @@ struct SettingsView: View {
             AudioTab()
                 .tabItem { Label("音频", systemImage: "speaker.wave.2") }
 
-            SubtitleTab()
+            ScrollView { SubtitleTab() }
                 .tabItem { Label("字幕", systemImage: "text.quote") }
 
             ControlTab()
@@ -46,6 +46,7 @@ struct SettingsView: View {
 // MARK: - General Tab
 
 struct GeneralTab: View {
+    @EnvironmentObject var viewModel: PlayerViewModel
     @EnvironmentObject var themeManager: ThemeManager
 
     var body: some View {
@@ -57,9 +58,16 @@ struct GeneralTab: View {
             }
 
             Section("启动") {
-                Text("播放窗口始终从欢迎页开始，可从最近项目快速继续播放。")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                Toggle("显示欢迎主页", isOn: $viewModel.showWelcomeScreen)
+                Toggle("启动时打开最近播放的视频", isOn: $viewModel.openRecentOnLaunch)
+            }
+            Section("文件管理") {
+                Toggle("主页显示最近播放", isOn: $viewModel.showRecentFiles)
+                Text("关闭仅隐藏主页列表，保留播放记录；重新打开后即可显示。")
+                    .font(.caption).foregroundColor(.secondary)
+                Toggle("打开视频时扫描同目录视频", isOn: $viewModel.autoScanSiblings)
+                Text("扫描结果按文件名排序加入播放列表，已手动创建的列表保持原顺序。")
+                    .font(.caption).foregroundColor(.secondary)
             }
         }
         .formStyle(.grouped)
@@ -76,6 +84,8 @@ struct PlaybackTab: View {
         Form {
             Section("播放行为") {
                 Toggle("记住上次播放位置", isOn: $viewModel.rememberLastPosition)
+                Toggle("重新打开时恢复播放位置", isOn: $viewModel.resumePlayback)
+                    .disabled(!viewModel.rememberLastPosition)
                 Toggle("自动播放下一个", isOn: $viewModel.autoPlayNext)
                 Toggle("随机播放", isOn: $viewModel.shufflePlayback)
                 Toggle("循环播放", isOn: $viewModel.isLooping)
@@ -194,10 +204,12 @@ struct AudioTab: View {
                         .frame(width: 40)
                 }
 
-                Toggle("启动时静音", isOn: $viewModel.isMuted)
+                Toggle("静音（记住设置）", isOn: $viewModel.isMuted)
             }
 
             Section("音频处理") {
+                Text("正值让声音晚于画面，负值让声音提前；调整时保留播放位置与暂停状态。")
+                    .font(.caption).foregroundColor(.secondary)
                 HStack {
                     Text("音频延迟：")
                     Stepper(value: $viewModel.audioDelay, in: -5...5, step: 0.1) {
@@ -207,9 +219,19 @@ struct AudioTab: View {
             }
 
             Section("音频设备") {
-                Picker("输出设备", selection: .constant("系统默认")) {
-                    Text("系统默认").tag("系统默认")
+                Picker("输出设备", selection: $viewModel.audioOutputDeviceID) {
+                    Text("系统默认").tag("")
+                    ForEach(viewModel.outputDevices) { device in Text(device.name).tag(device.id) }
+                    if !viewModel.audioOutputDeviceID.isEmpty && !viewModel.outputDevices.contains(where: { $0.id == viewModel.audioOutputDeviceID }) {
+                        Text("设备未连接，暂用系统默认").tag(viewModel.audioOutputDeviceID)
+                    }
                 }
+                Button("刷新设备") { viewModel.refreshAudioDevices() }
+                Picker("音轨", selection: $viewModel.selectedAudioTrack) {
+                    if viewModel.audioTracks.isEmpty { Text("无音轨").tag(0) }
+                    ForEach(viewModel.audioTracks) { track in Text("\(track.name) · \(track.language)").tag(track.id) }
+                }.disabled(viewModel.audioTracks.isEmpty)
+                if let error = viewModel.audioProcessingError { Text(error).foregroundColor(.red) }
             }
         }
         .formStyle(.grouped)
@@ -224,6 +246,18 @@ struct SubtitleTab: View {
 
     var body: some View {
         Form {
+            Section("字幕文件") {
+                Picker("当前字幕", selection: $viewModel.selectedSubtitleTrack) {
+                    Text("关闭外挂字幕").tag(-1)
+                    ForEach(viewModel.subtitleTracks) { track in Text(track.name).tag(track.id) }
+                }
+                Button("加载字幕文件…") { viewModel.openSubtitlePanel() }.disabled(viewModel.currentVideoURL == nil)
+                Toggle("自动加载同名字幕", isOn: $viewModel.autoLoadMatchingSubtitles)
+                Toggle("扫描同目录其他字幕", isOn: $viewModel.autoLoadDirectorySubtitles)
+                Text("支持 SRT、WebVTT、ASS/SSA 文本；ASS 排版使用下方统一样式。正延迟表示字幕更晚出现。")
+                    .font(.caption).foregroundColor(.secondary)
+                if let error = viewModel.subtitleError { Text(error).foregroundColor(.red) }
+            }
             Section("字幕显示") {
                 Toggle("显示字幕背景", isOn: $viewModel.showSubtitleBackground)
 
@@ -290,9 +324,10 @@ struct ControlTab: View {
             }
 
             Section("触控板手势") {
-                Text("双指缩放和三指滑动由系统手势自动处理。")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                Toggle("双指捏合缩放", isOn: $viewModel.pinchToZoom)
+                Toggle("横向轻扫快进 / 快退", isOn: $viewModel.swipeToSeek)
+                Text("轻扫需在 macOS 触控板设置中启用对应手势。")
+                    .font(.caption).foregroundColor(.secondary)
             }
         }
         .formStyle(.grouped)
@@ -380,7 +415,7 @@ struct AboutTab: View {
                 .font(.title)
                 .fontWeight(.bold)
 
-            Text("版本 1.2.0")
+            Text("版本 \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—")")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
 

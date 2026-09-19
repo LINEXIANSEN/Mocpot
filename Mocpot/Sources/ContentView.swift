@@ -3,11 +3,13 @@ import AVKit
 import SwiftUI
 
 struct SimpleVideoPlayer: NSViewRepresentable {
+    @EnvironmentObject var viewModel: PlayerViewModel
     let player: AVPlayer
     var layout: VideoLayout = .fit
 
     func makeNSView(context: Context) -> AVPlayerView {
-        let pv = AVPlayerView()
+        let pv = InteractivePlayerView()
+        pv.viewModel = viewModel
         pv.player = player
         pv.controlsStyle = .none
         pv.videoGravity = .resizeAspect
@@ -39,7 +41,12 @@ struct ContentView: View {
         HStack(spacing: 0) {
             ZStack {
                 if viewModel.currentVideoURL == nil {
-                    WelcomeView()
+                    if viewModel.showWelcomeScreen {
+                        WelcomeView()
+                    } else {
+                        Button("打开视频…") { viewModel.openFilePanel() }
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
                 } else {
                     if viewModel.vrMode != .none {
                         VRPlayerView()
@@ -181,7 +188,22 @@ struct PlaybackChrome<Surface: View>: View {
 
     var body: some View {
         ZStack(alignment: .trailing) {
-            surface
+            surface.scaleEffect(viewModel.videoZoom).clipped()
+            VStack {
+                Spacer()
+                if !viewModel.activeSubtitleText.isEmpty {
+                    Text(viewModel.activeSubtitleText)
+                        .font(.system(size: viewModel.subtitleFontSize, weight: .medium))
+                        .multilineTextAlignment(.center)
+                        .foregroundColor(viewModel.subtitleColor)
+                        .padding(.horizontal, 10).padding(.vertical, 5)
+                        .background(viewModel.showSubtitleBackground ? viewModel.subtitleBackgroundColor.opacity(0.8) : .clear,
+                                    in: RoundedRectangle(cornerRadius: 5))
+                        .shadow(color: .black.opacity(0.7), radius: 2, y: 1)
+                        .padding(.horizontal, 32)
+                        .padding(.bottom, controlsVisible || !viewModel.isPlaying || viewModel.isScrubbing || showQuickSettings ? 132 : 28)
+                }
+            }.frame(maxWidth: .infinity).allowsHitTesting(false)
             VStack {
                 if !viewModel.isFullscreen {
                     TopBar()
@@ -234,8 +256,8 @@ struct StandardPlayerView: View {
                         .onChange(of: viewModel.currentVideoURL) { _ in viewModel.setupPiP() }
                 }
             }
-            .onTapGesture(count: 2) { viewModel.toggleFullscreen() }
-            .onTapGesture { viewModel.togglePlayPause() }
+            .onTapGesture(count: 2) { viewModel.performClickAction(doubleClick: true) }
+            .onTapGesture { viewModel.performClickAction() }
         }
     }
 }
@@ -340,6 +362,11 @@ struct BottomControls: View {
                 } label: {
                     Image(systemName: "ellipsis.circle")
                 }.menuStyle(.borderlessButton).fixedSize().help("更多播放选项")
+                CtrlBtn(icon: "list.bullet") { viewModel.showPlaylist.toggle() }
+                    .foregroundColor(viewModel.showPlaylist ? .accentColor : .primary)
+                    .help(viewModel.showPlaylist ? "隐藏播放列表" : "显示播放列表")
+                    .accessibilityLabel("播放列表")
+                    .accessibilityValue(viewModel.showPlaylist ? "已展开" : "已收起")
                 CtrlBtn(icon: "slider.horizontal.3") { showQuickSettings.toggle() }.help("快速设置")
                 CtrlBtn(icon: viewModel.isFullscreen ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right") {
                     viewModel.toggleFullscreen()
@@ -432,6 +459,12 @@ struct QuickSettingsPanel: View {
                         Text("字幕").font(.subheadline).fontWeight(.semibold).foregroundColor(.accentColor)
                         QSSlider(label: "字幕延迟", value: $viewModel.subtitleDelay, range: -5...5)
                         Toggle("字幕背景", isOn: $viewModel.showSubtitleBackground)
+                        Picker("字幕", selection: $viewModel.selectedSubtitleTrack) {
+                            Text("关闭").tag(-1)
+                            ForEach(viewModel.subtitleTracks) { Text($0.name).tag($0.id) }
+                        }
+                        Button("加载字幕…") { viewModel.openSubtitlePanel() }
+                        if let error = viewModel.subtitleError { Text(error).font(.caption).foregroundColor(.red) }
                     }
 
                     Divider()
@@ -514,7 +547,7 @@ struct WelcomeView: View {
                     FeatureBadge(icon: "globe", title: "360° 全景", subtitle: "拖拽探索画面")
                 }
 
-                if !viewModel.recentFiles.isEmpty {
+                if !viewModel.visibleRecentFiles.isEmpty {
                     VStack(alignment: .leading, spacing: 12) {
                         HStack {
                             Text("最近播放").font(.headline)
@@ -522,7 +555,7 @@ struct WelcomeView: View {
                             Text("继续上次的精彩").font(.caption).foregroundColor(.secondary)
                         }
                         VStack(spacing: 0) {
-                            ForEach(viewModel.recentFiles.prefix(5), id: \.self) { url in
+                            ForEach(viewModel.visibleRecentFiles.prefix(5), id: \.self) { url in
                                 Button { viewModel.openFile(url: url) } label: {
                                     HStack(spacing: 12) {
                                         Image(systemName: "film").foregroundColor(palette.accent)
@@ -536,7 +569,7 @@ struct WelcomeView: View {
                                         Image(systemName: "play.circle").foregroundColor(.secondary)
                                     }.padding(12).contentShape(Rectangle())
                                 }.buttonStyle(.plain)
-                                if url != viewModel.recentFiles.prefix(5).last { Divider().padding(.leading, 56) }
+                                if url != viewModel.visibleRecentFiles.prefix(5).last { Divider().padding(.leading, 56) }
                             }
                         }.modifier(PlayerSurface(radius: 12))
                     }

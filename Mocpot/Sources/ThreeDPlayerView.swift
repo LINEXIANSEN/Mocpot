@@ -34,8 +34,8 @@ struct ThreeDPlayerView: View {
                 }
             }
         }
-        .onTapGesture(count: 2) { viewModel.toggleFullscreen() }
-        .onTapGesture { viewModel.togglePlayPause() }
+        .onTapGesture(count: 2) { viewModel.performClickAction(doubleClick: true) }
+        .onTapGesture { viewModel.performClickAction() }
         }
     }
 }

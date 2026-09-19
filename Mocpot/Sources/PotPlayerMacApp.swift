@@ -15,6 +15,7 @@ struct MocpotApp: App {
                 .frame(minWidth: 800, minHeight: 500)
                 .onAppear {
                     setupMenu()
+                    viewModel.applyLaunchBehavior()
                     DispatchQueue.main.async {
                         NSApp.keyWindow?.identifier = NSUserInterfaceItemIdentifier("MocpotPlayer")
                     }

@@ -1,3 +1,4 @@
+import Combine
 import AVFoundation
 import AVKit
 import SwiftUI
@@ -122,18 +123,39 @@ class PlayerViewModel: NSObject, ObservableObject {
     @Published var currentPlaylistIndex: Int = -1
     @Published var subtitleTracks: [SubtitleTrack] = []
     @Published var audioTracks: [AudioTrack] = []
-    @Published var selectedSubtitleTrack: Int = -1
-    @Published var selectedAudioTrack: Int = 0
-    @Published var audioDelay: Double = 0
+    @Published var selectedSubtitleTrack: Int = -1 { didSet { loadSelectedSubtitle() } }
+    @Published var selectedAudioTrack: Int = 0 { didSet { if oldValue != selectedAudioTrack { rebuildAudio() } } }
+    @Published var audioDelay: Double = 0 { didSet { if oldValue != audioDelay { rebuildAudio() } } }
     @Published var subtitleDelay: Double = 0
-    @Published var brightness: Double = 0
-    @Published var contrast: Double = 0
-    @Published var saturation: Double = 0
-    @Published var hue: Double = 0
-    @Published var sharpness: Double = 0
+    @Published var brightness: Double = 0 { didSet { applyVideoFilters() } }
+    @Published var contrast: Double = 0 { didSet { applyVideoFilters() } }
+    @Published var saturation: Double = 0 { didSet { applyVideoFilters() } }
+    @Published var hue: Double = 0 { didSet { applyVideoFilters() } }
+    @Published var sharpness: Double = 0 { didSet { applyVideoFilters() } }
     @Published var deinterlace: Bool = false
     @Published var autoFit: Bool = true
     @Published var recentFiles: [URL] = []
+    @Published var showRecentFiles = true { didSet { defaults.set(showRecentFiles, forKey: "showRecentFiles") } }
+    @Published var showWelcomeScreen = true { didSet { defaults.set(showWelcomeScreen, forKey: "showWelcomeScreen") } }
+    @Published var openRecentOnLaunch = false { didSet { defaults.set(openRecentOnLaunch, forKey: "openRecentOnLaunch") } }
+    @Published var autoScanSiblings = false { didSet { defaults.set(autoScanSiblings, forKey: "autoScanSiblings") } }
+    var visibleRecentFiles: [URL] { showRecentFiles ? recentFiles : [] }
+    private var didApplyLaunchBehavior = false
+
+    func applyLaunchBehavior() {
+        guard !didApplyLaunchBehavior else { return }
+        didApplyLaunchBehavior = true
+        if openRecentOnLaunch, currentVideoURL == nil, let url = recentFiles.first { openFile(url: url) }
+    }
+
+    func performClickAction(doubleClick: Bool = false) {
+        switch doubleClick ? doubleClickAction : singleClickAction {
+        case "播放/暂停": togglePlayPause()
+        case "全屏": toggleFullscreen()
+        default: break
+        }
+    }
+
     @Published var aspectRatio: CGFloat = 16.0 / 9.0
     @Published var showInspector: Bool = false
     @Published var showPlaylist: Bool = false
@@ -151,7 +173,7 @@ class PlayerViewModel: NSObject, ObservableObject {
     @Published var screenshotDirectory: URL = FileManager.default.urls(for: .picturesDirectory, in: .userDomainMask).first!
 
     // Subtitle
-    @Published var subtitleEncoding: SubtitleEncoding = .auto
+    @Published var subtitleEncoding: SubtitleEncoding = .auto { didSet { loadSelectedSubtitle() } }
     @Published var subtitleFontSize: CGFloat = 24
     @Published var subtitleColor: Color = .white
     @Published var subtitleBackgroundColor: Color = .black
@@ -184,6 +206,22 @@ class PlayerViewModel: NSObject, ObservableObject {
     @Published var doubleClickAction: String = "全屏"
     @Published var rightClickAction: String = "显示菜单"
     @Published var scrollAction: String = "快进/快退"
+    @Published var videoZoom: CGFloat = 1
+    @Published var pinchToZoom = true
+    @Published var swipeToSeek = true
+
+    @Published var subtitleCues: [SubtitleCue] = []
+    @Published var subtitleError: String?
+    @Published var audioProcessingError: String?
+    @Published var autoLoadMatchingSubtitles = true { didSet { reloadSubtitleDiscovery() } }
+    @Published var autoLoadDirectorySubtitles = false { didSet { reloadSubtitleDiscovery() } }
+    @Published var outputDevices: [AudioOutputDevice] = []
+    @Published var audioOutputDeviceID = "" { didSet { applyAudioOutput() } }
+    var subtitleURLs: [URL] = []
+    var mediaSettingsSubscription: AnyCancellable?
+    var isRebuildingMedia = false
+    private var reloadPosition: Double?
+    private var reloadTask: DispatchWorkItem?
 
     private var timeObserverToken: Any?
     @Published var isLoading = false
@@ -196,7 +234,7 @@ class PlayerViewModel: NSObject, ObservableObject {
     private var fullscreenObservers: [NSObjectProtocol] = []
 
 
-    private let defaults: UserDefaults
+    let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -207,6 +245,8 @@ class PlayerViewModel: NSObject, ObservableObject {
         ])
         loadRecentFiles()
         loadSettings()
+        refreshAudioDevices()
+        observeMediaSettings()
         fullscreenObservers = [
             NotificationCenter.default.addObserver(forName: NSWindow.didEnterFullScreenNotification, object: nil, queue: .main) { [weak self] _ in
                 self?.isFullscreen = true
@@ -246,6 +286,19 @@ class PlayerViewModel: NSObject, ObservableObject {
             playbackError = "只能打开本地视频文件。"
             return
         }
+        if autoScanSiblings && !playlist.contains(url) {
+            let extensions = Set(["mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "m4v", "mpg", "mpeg", "ts", "mts", "m2ts", "3gp", "ogv"])
+            let siblings = (try? FileManager.default.contentsOfDirectory(at: url.deletingLastPathComponent(), includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles])) ?? []
+            playlist = siblings.filter { extensions.contains($0.pathExtension.lowercased()) && validateLocalMediaURL($0) }
+                .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
+        }
+        if !isRebuildingMedia {
+            reloadTask?.cancel()
+            reloadPosition = nil
+            isRebuildingMedia = true
+            selectedAudioTrack = 0
+            isRebuildingMedia = false
+        }
         persistCurrentPosition()
         player?.pause()
         removeTimeObserver()
@@ -257,13 +310,21 @@ class PlayerViewModel: NSObject, ObservableObject {
         currentTime = 0
         duration = 0
         clearABLoop()
+        if !isRebuildingMedia { videoZoom = 1 }
         videoMetadata = VideoMetadata()
         playbackError = nil
         isLoading = true
         isPlaying = false
         wantsPlayback = true
 
-        let item = AVPlayerItem(url: url)
+        let item: AVPlayerItem
+        do { item = try makePlaybackItem(url: url) }
+        catch {
+            audioProcessingError = "音频调整失败：\(error.localizedDescription)"
+            isLoading = false
+            wantsPlayback = false
+            return
+        }
         let newPlayer = AVPlayer(playerItem: item)
         newPlayer.allowsExternalPlayback = true
         newPlayer.automaticallyWaitsToMinimizeStalling = true
@@ -271,12 +332,16 @@ class PlayerViewModel: NSObject, ObservableObject {
         newPlayer.isMuted = isMuted
         player = newPlayer
         currentVideoURL = url
+        applyAudioOutput()
+        applyVideoFilters()
         currentPlaylistIndex = playlist.firstIndex(of: url) ?? -1
         videoTitle = url.deletingPathExtension().lastPathComponent
         loadMetadata(url: url)
         saveRecentFile(url: url)
-        detectVideoType(url: url)
-        loadSubtitlesForVideo(url: url)
+        if !isRebuildingMedia {
+            detectVideoType(url: url)
+            loadSubtitlesForVideo(url: url)
+        }
         setupTimeObserver()
         lastPositionSave = Date()
 
@@ -288,7 +353,10 @@ class PlayerViewModel: NSObject, ObservableObject {
                     guard self.isLoading else { return }
                     self.isLoading = false
                     self.updateVideoInfo()
-                    if self.resumePlayback && self.wantsPlayback { self.restorePlaybackPosition(url: url) }
+                    if let position = self.reloadPosition {
+                        self.reloadPosition = nil
+                        self.seek(to: position)
+                    } else if self.rememberLastPosition && self.resumePlayback && self.wantsPlayback { self.restorePlaybackPosition(url: url) }
                     if self.wantsPlayback {
                         self.player?.rate = self.playbackSpeed.value
                         self.isPlaying = true
@@ -345,20 +413,27 @@ class PlayerViewModel: NSObject, ObservableObject {
     }
 
     func loadSubtitlesForVideo(url: URL) {
-        let dir = url.deletingLastPathComponent()
-        let baseName = url.deletingPathExtension().lastPathComponent
-        let srtExtensions = ["srt", "ass", "ssa", "sub", "vtt"]
+        discoverSubtitles(for: url)
+    }
 
-        subtitleTracks.removeAll()
-        var trackId = 0
-
-        for ext in srtExtensions {
-            let subURL = dir.appendingPathComponent("\(baseName).\(ext)")
-            if FileManager.default.fileExists(atPath: subURL.path) {
-                subtitleTracks.append(SubtitleTrack(id: trackId, name: "\(baseName).\(ext)", language: "外挂字幕"))
-                trackId += 1
-            }
+    func rebuildAudio() {
+        guard !isRebuildingMedia, let url = currentVideoURL else { return }
+        reloadTask?.cancel()
+        let task = DispatchWorkItem { [weak self] in
+            guard let self, self.currentVideoURL == url else { return }
+            let position = self.reloadPosition ?? self.currentTime
+            let playing = self.wantsPlayback
+            let a = self.loopPointA, b = self.loopPointB, looping = self.isABLooping
+            self.isRebuildingMedia = true
+            self.openFile(url: url)
+            self.isRebuildingMedia = false
+            self.reloadPosition = position
+            self.wantsPlayback = playing
+            self.loopPointA = a; self.loopPointB = b; self.isABLooping = looping
+            self.setupPiP()
         }
+        reloadTask = task
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: task)
     }
 
     func setupTimeObserver() {
@@ -431,6 +506,12 @@ class PlayerViewModel: NSObject, ObservableObject {
     }
 
     func returnToHome() {
+        reloadTask?.cancel()
+        reloadPosition = nil
+        subtitleCues = []
+        subtitleTracks = []
+        subtitleURLs = []
+        audioTracks = []
         persistCurrentPosition()
         wantsPlayback = false
         player?.pause()
@@ -771,6 +852,9 @@ class PlayerViewModel: NSObject, ObservableObject {
     // MARK: - Settings Persistence
 
     func saveSettings() {
+        saveMediaSettings()
+        defaults.set(singleClickAction, forKey: "singleClickAction")
+        defaults.set(doubleClickAction, forKey: "doubleClickAction")
         defaults.set(volume, forKey: "volume")
         defaults.set(isMuted, forKey: "isMuted")
         defaults.set(playbackSpeed.rawValue, forKey: "playbackSpeed")
@@ -793,6 +877,13 @@ class PlayerViewModel: NSObject, ObservableObject {
     }
 
     func loadSettings() {
+        loadMediaSettings()
+        showRecentFiles = defaults.object(forKey: "showRecentFiles") as? Bool ?? true
+        showWelcomeScreen = defaults.object(forKey: "showWelcomeScreen") as? Bool ?? true
+        openRecentOnLaunch = defaults.bool(forKey: "openRecentOnLaunch")
+        autoScanSiblings = defaults.bool(forKey: "autoScanSiblings")
+        singleClickAction = defaults.string(forKey: "singleClickAction") ?? "播放/暂停"
+        doubleClickAction = defaults.string(forKey: "doubleClickAction") ?? "全屏"
         volume = defaults.object(forKey: "volume") as? Double ?? 1.0
         isMuted = defaults.bool(forKey: "isMuted")
         if let speedStr = defaults.string(forKey: "playbackSpeed"),

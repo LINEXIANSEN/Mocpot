@@ -20,6 +20,7 @@
 		A100001E /* PictureInPictureController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200001E /* PictureInPictureController.swift */; };
 		A1000020 /* SceneKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A2000021 /* SceneKit.framework */; };
 		A1000012 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A200001C /* Assets.xcassets */; };
+A1000022 = {isa = PBXBuildFile; fileRef = A2000022; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -37,6 +38,7 @@
 		A200001C /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A2000021 /* SceneKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SceneKit.framework; path = System/Library/Frameworks/SceneKit.framework; sourceTree = SDKROOT; };
 		A3000001 /* Mocpot.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Mocpot.app; sourceTree = BUILT_PRODUCTS_DIR; };
+A2000022 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaSettings.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -65,6 +67,7 @@
 				A2000001 /* PotPlayerMacApp.swift */,
 				A2000002 /* ContentView.swift */,
 				A2000003 /* PlayerViewModel.swift */,
+                A2000022,
 				A2000005 /* VRPlayerView.swift */,
 				A2000006 /* ThreeDPlayerView.swift */,
 				A2000018 /* PlaylistView.swift */,
@@ -159,6 +162,7 @@
 				A1000001 /* PotPlayerMacApp.swift in Sources */,
 				A1000002 /* ContentView.swift in Sources */,
 				A1000003 /* PlayerViewModel.swift in Sources */,
+                A1000022,
 				A1000005 /* VRPlayerView.swift in Sources */,
 				A1000006 /* ThreeDPlayerView.swift in Sources */,
 				A1000018 /* PlaylistView.swift in Sources */,
@@ -294,7 +298,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 Mocpot. All rights reserved.";
@@ -303,7 +307,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.2.0;
+				MARKETING_VERSION = 1.2.1;
 				OTHER_LDFLAGS = (
 					"-framework",
 					SceneKit,
@@ -322,7 +326,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 Mocpot. All rights reserved.";
@@ -331,7 +335,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.2.0;
+				MARKETING_VERSION = 1.2.1;
 				OTHER_LDFLAGS = (
 					"-framework",
 					SceneKit,

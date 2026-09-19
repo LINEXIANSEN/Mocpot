@@ -10,8 +10,8 @@ struct VRPlayerView: View {
             ZStack(alignment: .topLeading) {
                 Color.black
                 if let player = viewModel.player {
-                    VRSceneContainer(player: player, isPlaying: viewModel.isPlaying,
-                                     togglePlayback: viewModel.togglePlayPause)
+                    VRSceneContainer(viewModel: viewModel, player: player, isPlaying: viewModel.isPlaying,
+                                     togglePlayback: { viewModel.performClickAction() })
                 }
                 Text("拖拽环顾 · 滚轮缩放 · 双击回正")
                     .font(.caption).foregroundColor(.white.opacity(0.65))
@@ -24,12 +24,14 @@ struct VRPlayerView: View {
 }
 
 struct VRSceneContainer: NSViewRepresentable {
+    let viewModel: PlayerViewModel
     let player: AVPlayer
     let isPlaying: Bool
     let togglePlayback: () -> Void
 
     func makeNSView(context: Context) -> PanoramaSceneView {
         let view = PanoramaSceneView()
+        view.viewModel = viewModel
         view.backgroundColor = .black
         view.allowsCameraControl = false
         view.autoenablesDefaultLighting = false
@@ -89,6 +91,7 @@ struct VRSceneContainer: NSViewRepresentable {
 
 /// Camera movement stays in SceneKit; it does not invalidate the SwiftUI player tree.
 final class PanoramaSceneView: SCNView {
+    weak var viewModel: PlayerViewModel?
     weak var boundPlayer: AVPlayer?
     var material: SCNMaterial?
     var togglePlayback: (() -> Void)?
@@ -119,10 +122,19 @@ final class PanoramaSceneView: SCNView {
     }
 
     override func scrollWheel(with event: NSEvent) {
+        if let vm = viewModel, vm.scrollAction != "缩放" { vm.handleScroll(event.scrollingDeltaY); return }
         guard let camera = pointOfView?.camera else { return }
         camera.fieldOfView = max(35, min(110, camera.fieldOfView + event.scrollingDeltaY * 0.15))
         needsDisplay = true
     }
+
+    override func rightMouseDown(with event: NSEvent) { viewModel?.handleRightClick(event, in: self) }
+    override func magnify(with event: NSEvent) {
+        guard viewModel?.pinchToZoom == true, let camera = pointOfView?.camera else { return }
+        camera.fieldOfView = max(35, min(110, camera.fieldOfView - event.magnification * 60))
+        needsDisplay = true
+    }
+    override func swipe(with event: NSEvent) { viewModel?.handleSwipe(event.deltaX) }
 
     func resetCamera() {
         yaw = 0

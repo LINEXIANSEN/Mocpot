@@ -46,6 +46,7 @@ struct SettingsView: View {
 // MARK: - General Tab
 
 struct GeneralTab: View {
+    @State private var cacheCleared = false
     @EnvironmentObject var viewModel: PlayerViewModel
     @EnvironmentObject var themeManager: ThemeManager
 
@@ -60,6 +61,15 @@ struct GeneralTab: View {
             Section("启动") {
                 Toggle("显示欢迎主页", isOn: $viewModel.showWelcomeScreen)
                 Toggle("启动时打开最近播放的视频", isOn: $viewModel.openRecentOnLaunch)
+            }
+            Section("兼容播放") {
+                Text("系统无法解码时，自动在本机换封装或转换编码。原文件保持不变；首次打开可能需要等待，重复打开会复用缓存。")
+                    .font(.caption).foregroundColor(.secondary)
+                Button("清理兼容缓存") {
+                    viewModel.compatibility.clearCache(keeping: viewModel.playbackMediaURL)
+                    cacheCleared = true
+                }.disabled(viewModel.isLoading)
+                if cacheCleared { Text("已清理；当前播放所需的缓存已保留。").font(.caption).foregroundColor(.secondary) }
             }
             Section("文件管理") {
                 Toggle("主页显示最近播放", isOn: $viewModel.showRecentFiles)
@@ -419,14 +429,17 @@ struct AboutTab: View {
                 .font(.subheadline)
                 .foregroundColor(.secondary)
 
-            Text("macOS 全功能视频播放器")
+            Link("兼容组件：FFmpeg · LGPL v2.1+", destination: URL(string: "https://ffmpeg.org/")!)
+                .font(.caption)
+
+            Text("macOS 视频播放器")
                 .font(.body)
                 .foregroundColor(.secondary)
 
             Divider()
 
             VStack(alignment: .leading, spacing: 6) {
-                FeatureItem(icon: "film", text: "支持所有主流视频格式")
+                FeatureItem(icon: "film", text: "系统播放与本地兼容转换")
                 FeatureItem(icon: "cube", text: "3D 视频播放（左右/上下/红蓝）")
                 FeatureItem(icon: "globe", text: "360° VR 全景视频支持")
                 FeatureItem(icon: "pip", text: "画中画模式")

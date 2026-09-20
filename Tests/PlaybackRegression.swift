@@ -111,7 +111,12 @@ struct PlaybackRegression {
         vm.openFile(url: first)
         vm.stopPlayback()
         try await wait("stop during loading cancels autoplay") { !vm.isLoading }
-        precondition(!vm.isPlaying && vm.player?.rate == 0)
+        try await Task.sleep(nanoseconds: 300_000_000)
+        precondition(!vm.isPlaying && (vm.player == nil || vm.player?.rate == 0))
+        vm.togglePlayPause()
+        try await wait("play restarts cancelled preparation") { !vm.isLoading && vm.isPlaying }
+        vm.stopPlayback()
+        try await wait("stop before media settings tests") { !vm.isScrubbing }
         let srt = "1\n00:00:01,000 --> 00:00:03,000\nHello 世界\n\n2\n00:00:02,000 --> 00:00:04,000\nSecond line\n"
         let sub = folder.appendingPathComponent("sample.srt")
         try srt.write(to: sub, atomically: true, encoding: .utf8)

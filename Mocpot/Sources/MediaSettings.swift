@@ -108,6 +108,7 @@ extension PlayerViewModel {
             if matches($0) != matches($1) { return matches($0) }
             return $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending
         }
+        if autoLoadMatchingSubtitles { subtitleURLs += compatibility.subtitleFiles(for: playbackMediaURL) }
         subtitleTracks = subtitleURLs.enumerated().map { SubtitleTrack(id: $0.offset, name: $0.element.lastPathComponent, language: "外挂字幕") }
         selectedSubtitleTrack = previous.flatMap { subtitleURLs.firstIndex(of: $0) } ?? (subtitleURLs.isEmpty ? -1 : 0)
     }

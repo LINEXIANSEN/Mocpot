@@ -146,7 +146,8 @@ struct ContentView: View {
             if viewModel.isLoading {
                 VStack(spacing: 12) {
                     ProgressView().controlSize(.small)
-                    Text("正在打开视频…").font(.callout)
+                    Text(viewModel.loadingMessage).font(.callout)
+                    Button("取消") { viewModel.returnToHome() }
                 }
                 .padding(24).modifier(PlayerSurface())
             }
@@ -471,6 +472,7 @@ struct QuickSettingsPanel: View {
 
                     Group {
                         Text("播放").font(.subheadline).fontWeight(.semibold).foregroundColor(.accentColor)
+                        if let note = viewModel.compatibilityNote { Text(note).font(.caption).foregroundColor(.secondary) }
                         Toggle("循环播放", isOn: $viewModel.isLooping)
                         Toggle("随机播放", isOn: $viewModel.shufflePlayback)
                         Toggle("记住位置", isOn: $viewModel.rememberLastPosition)

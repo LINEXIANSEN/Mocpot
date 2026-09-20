@@ -224,6 +224,12 @@ class PlayerViewModel: NSObject, ObservableObject {
     private var reloadTask: DispatchWorkItem?
 
     private var timeObserverToken: Any?
+    let compatibility: FormatCompatibility
+    @Published var loadingMessage = "正在打开视频…"
+    @Published var compatibilityNote: String?
+    var playbackMediaURL: URL?
+    private var prepareTask: Task<Void, Never>?
+    private var prepareID = UUID()
     @Published var isLoading = false
     @Published var playbackError: String?
     private var itemObservation: NSKeyValueObservation?
@@ -236,7 +242,8 @@ class PlayerViewModel: NSObject, ObservableObject {
 
     let defaults: UserDefaults
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, compatibility: FormatCompatibility = FormatCompatibility()) {
+        self.compatibility = compatibility
         self.defaults = defaults
         super.init()
         defaults.register(defaults: [
@@ -281,7 +288,71 @@ class PlayerViewModel: NSObject, ObservableObject {
         }
     }
 
-    func openFile(url: URL) {
+    func openFile(url: URL, forceCompatibility: Bool = false) {
+        guard validateLocalMediaURL(url) else {
+            playbackError = "只能打开本地视频文件。"
+            return
+        }
+        if isRebuildingMedia {
+            startPlayback(url: url, mediaURL: playbackMediaURL ?? url)
+            return
+        }
+        prepareTask?.cancel()
+        compatibility.cancel()
+        reloadTask?.cancel()
+        persistCurrentPosition()
+        player?.pause()
+        removeTimeObserver()
+        itemObservation = nil
+        if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
+        endObserver = nil
+        player = nil
+        currentTime = 0
+        duration = 0
+        isScrubbing = false
+        currentVideoURL = url
+        playbackMediaURL = nil
+        videoTitle = url.deletingPathExtension().lastPathComponent
+        subtitleCues = []
+        isPlaying = false
+        isLoading = true
+        wantsPlayback = true
+        playbackError = nil
+        compatibilityNote = nil
+        loadingMessage = "正在检测视频编码…"
+        let id = UUID()
+        prepareID = id
+        prepareTask = Task { @MainActor [weak self] in
+            guard let self, !Task.isCancelled else { return }
+            do {
+                let media = try await self.compatibility.prepare(url, force: forceCompatibility) { [weak self] message in
+                    DispatchQueue.main.async {
+                        guard let self, self.prepareID == id else { return }
+                        self.loadingMessage = message
+                    }
+                }
+                guard !Task.isCancelled, self.prepareID == id else { return }
+                self.compatibilityNote = media == url ? nil : "兼容模式：使用本地转换缓存，原文件未修改"
+                self.loadingMessage = "正在打开视频…"
+                self.startPlayback(url: url, mediaURL: media)
+            } catch {
+                guard !Task.isCancelled, self.prepareID == id else { return }
+                self.isLoading = false
+                self.wantsPlayback = false
+                self.playbackError = error.localizedDescription
+            }
+        }
+    }
+
+    func cancelOpening() {
+        prepareID = UUID()
+        prepareTask?.cancel()
+        compatibility.cancel()
+        isLoading = false
+        wantsPlayback = false
+    }
+
+    private func startPlayback(url: URL, mediaURL: URL) {
         guard validateLocalMediaURL(url) else {
             playbackError = "只能打开本地视频文件。"
             return
@@ -318,7 +389,7 @@ class PlayerViewModel: NSObject, ObservableObject {
         wantsPlayback = true
 
         let item: AVPlayerItem
-        do { item = try makePlaybackItem(url: url) }
+        do { item = try makePlaybackItem(url: mediaURL) }
         catch {
             audioProcessingError = "音频调整失败：\(error.localizedDescription)"
             isLoading = false
@@ -330,6 +401,7 @@ class PlayerViewModel: NSObject, ObservableObject {
         newPlayer.automaticallyWaitsToMinimizeStalling = true
         newPlayer.volume = Float(volume)
         newPlayer.isMuted = isMuted
+        playbackMediaURL = mediaURL
         player = newPlayer
         currentVideoURL = url
         applyAudioOutput()
@@ -362,6 +434,10 @@ class PlayerViewModel: NSObject, ObservableObject {
                         self.isPlaying = true
                     }
                 case .failed:
+                    if self.compatibilityNote == nil && !self.isRebuildingMedia {
+                        self.openFile(url: url, forceCompatibility: true)
+                        return
+                    }
                     self.isLoading = false
                     self.isPlaying = false
                     self.wantsPlayback = false
@@ -480,7 +556,10 @@ class PlayerViewModel: NSObject, ObservableObject {
     // MARK: - Playback Controls
 
     func togglePlayPause() {
-        guard let player = player else { return }
+        guard let player = player else {
+            if !isLoading, let url = currentVideoURL { openFile(url: url) }
+            return
+        }
         if isLoading { wantsPlayback.toggle(); return }
         guard playbackError == nil, player.currentItem?.status == .readyToPlay else { return }
         if isPlaying {
@@ -497,6 +576,7 @@ class PlayerViewModel: NSObject, ObservableObject {
     }
 
     func stopPlayback() {
+        if isLoading { cancelOpening() }
         persistCurrentPosition()
         wantsPlayback = false
         player?.pause()
@@ -506,6 +586,8 @@ class PlayerViewModel: NSObject, ObservableObject {
     }
 
     func returnToHome() {
+        cancelOpening()
+        playbackMediaURL = nil
         reloadTask?.cancel()
         reloadPosition = nil
         subtitleCues = []
@@ -623,7 +705,7 @@ class PlayerViewModel: NSObject, ObservableObject {
         guard player != nil, let url = currentVideoURL else { return }
 
         let time = CMTime(seconds: currentTime, preferredTimescale: 600)
-        let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url))
+        let generator = AVAssetImageGenerator(asset: AVURLAsset(url: playbackMediaURL ?? url))
         generator.appliesPreferredTrackTransform = true
 
         generator.generateCGImagesAsynchronously(forTimes: [NSValue(time: time)]) { [weak self] _, cgImage, _, _, error in

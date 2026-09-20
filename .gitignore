@@ -57,3 +57,6 @@ iOSInjectionProject/
 
 # App icon source
 AppIcon/
+
+# Rebuilt from pinned FFmpeg source using Scripts/build-compatibility-tools.sh
+Vendor/FFmpeg/Helpers/

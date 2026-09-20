@@ -21,6 +21,8 @@
 		A1000020 /* SceneKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A2000021 /* SceneKit.framework */; };
 		A1000012 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A200001C /* Assets.xcassets */; };
 A1000022 = {isa = PBXBuildFile; fileRef = A2000022; };
+A1000023 = {isa = PBXBuildFile; fileRef = A2000023; };
+A1000024 = {isa = PBXBuildFile; fileRef = A2000024; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -39,6 +41,8 @@ A1000022 = {isa = PBXBuildFile; fileRef = A2000022; };
 		A2000021 /* SceneKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SceneKit.framework; path = System/Library/Frameworks/SceneKit.framework; sourceTree = SDKROOT; };
 		A3000001 /* Mocpot.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Mocpot.app; sourceTree = BUILT_PRODUCTS_DIR; };
 A2000022 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaSettings.swift; sourceTree = "<group>"; };
+A2000023 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FormatCompatibility.swift; sourceTree = "<group>"; };
+A2000024 = {isa = PBXFileReference; lastKnownFileType = folder; path = Vendor/FFmpeg/Helpers; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -58,6 +62,7 @@ A2000022 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path =
 			children = (
 				A5000002 /* Mocpot */,
 				A5000003 /* Products */,
+                A2000024,
 			);
 			sourceTree = "<group>";
 		};
@@ -68,6 +73,7 @@ A2000022 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path =
 				A2000002 /* ContentView.swift */,
 				A2000003 /* PlayerViewModel.swift */,
                 A2000022,
+                A2000023,
 				A2000005 /* VRPlayerView.swift */,
 				A2000006 /* ThreeDPlayerView.swift */,
 				A2000018 /* PlaylistView.swift */,
@@ -149,6 +155,7 @@ A2000022 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path =
 			buildActionMask = 2147483647;
 			files = (
 				A1000012 /* Assets.xcassets in Resources */,
+                A1000024,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -163,6 +170,7 @@ A2000022 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path =
 				A1000002 /* ContentView.swift in Sources */,
 				A1000003 /* PlayerViewModel.swift in Sources */,
                 A1000022,
+                A1000023,
 				A1000005 /* VRPlayerView.swift in Sources */,
 				A1000006 /* ThreeDPlayerView.swift in Sources */,
 				A1000018 /* PlaylistView.swift in Sources */,
@@ -298,7 +306,7 @@ A2000022 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path =
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 Mocpot. All rights reserved.";
@@ -307,7 +315,7 @@ A2000022 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path =
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.2.1;
+				MARKETING_VERSION = 1.2.2;
 				OTHER_LDFLAGS = (
 					"-framework",
 					SceneKit,
@@ -326,7 +334,7 @@ A2000022 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path =
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 Mocpot. All rights reserved.";
@@ -335,7 +343,7 @@ A2000022 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path =
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.2.1;
+				MARKETING_VERSION = 1.2.2;
 				OTHER_LDFLAGS = (
 					"-framework",
 					SceneKit,

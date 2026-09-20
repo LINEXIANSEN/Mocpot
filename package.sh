@@ -1,59 +1,23 @@
 #!/bin/bash
-
-# Mocpot 打包脚本
-# 用法: ./package.sh
-
-set -e
-
-APP_NAME="Mocpot"
-BUILD_DIR="$HOME/Library/Developer/Xcode/DerivedData/Mocpot-eekpvrgkskpidgdjdimstwuazasc/Build/Products/Release"
-OUTPUT_DIR="$HOME/Desktop"
-DMG_NAME="${APP_NAME}-1.0.0"
-DMG_PATH="$OUTPUT_DIR/$DMG_NAME.dmg"
-TEMP_DMG="$OUTPUT_DIR/${DMG_NAME}_temp.dmg"
-
-echo "🎬 开始打包 ${APP_NAME}..."
-
-# 1. 构建 Release 版本
-echo "📦 构建 Release 版本..."
-xcodebuild -project Mocpot.xcodeproj \
-           -scheme Mocpot \
-           -configuration Release \
-           clean build
-
-# 2. 检查应用
-APP_PATH="$BUILD_DIR/$APP_NAME.app"
-if [ ! -d "$APP_PATH" ]; then
-    echo "❌ 构建失败: 找不到 $APP_PATH"
-    exit 1
+set -euo pipefail
+cd "$(dirname "$0")"
+if [[ ! -x Vendor/FFmpeg/Helpers/ffmpeg || ! -x Vendor/FFmpeg/Helpers/ffprobe ]]; then
+    Scripts/build-compatibility-tools.sh
 fi
-
-echo "✅ Release 版本构建成功"
-
-# 3. 创建 DMG
-echo "💿 创建 DMG 安装包..."
-
-# 清理旧文件
-rm -f "$DMG_PATH" "$TEMP_DMG"
-
-# 创建临时 DMG
-hdiutil create -volname "$APP_NAME" \
-               -srcfolder "$APP_PATH" \
-               -ov -format UDZO \
-               "$TEMP_DMG"
-
-# 重命名
-mv "$TEMP_DMG" "$DMG_PATH"
-
-echo ""
-echo "✅ 打包完成！"
-echo "📁 DMG 文件: $DMG_PATH"
-echo ""
-echo "📊 文件信息:"
-ls -lh "$DMG_PATH"
-echo ""
-echo "🚀 发布方式:"
-echo "   1. 直接分享 DMG 文件给用户"
-echo "   2. 上传到 GitHub Releases"
-echo "   3. 上传到 Mac App Store (需要开发者账号)"
-echo ""
+build_dir=$(mktemp -d /tmp/mocpot-release.XXXXXX)
+xcodebuild -project Mocpot.xcodeproj -scheme Mocpot -configuration Release -derivedDataPath "$build_dir" CODE_SIGNING_ALLOWED=NO build
+app="$build_dir/Build/Products/Release/Mocpot.app"
+version=$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$app/Contents/Info.plist")
+for tool in ffmpeg ffprobe; do
+    codesign --force --sign - "$app/Contents/Resources/Helpers/$tool"
+    "$app/Contents/Resources/Helpers/$tool" -version >/dev/null
+done
+codesign --force --deep --sign - "$app"
+codesign --verify --deep --strict "$app"
+stage=$(mktemp -d /tmp/mocpot-stage.XXXXXX)
+ditto "$app" "$stage/Mocpot.app"
+ln -s /Applications "$stage/Applications"
+output="${MOCPOT_OUTPUT_DIR:-$(dirname "$PWD")}/Mocpot-$version.dmg"
+hdiutil create -volname "Mocpot $version" -srcfolder "$stage" -ov -format UDZO "$output"
+hdiutil verify "$output"
+echo "$output"

@@ -77,6 +77,43 @@ final class FormatCompatibility {
         }
     }
 
+    func extractSubtitles(_ url: URL) async throws -> [(url: URL, title: String)] {
+        cancel()
+        let id = currentGeneration()
+        return try await withCheckedThrowingContinuation { continuation in
+            worker.async {
+                do {
+                    let input = ["-protocol_whitelist", "file,pipe", "-format_whitelist", "mov,matroska,webm,avi,asf,mpeg,mpegts,flv,ogg,rm", "-i", url.path]
+                    let probe = try self.run("ffprobe", ["-v", "error"] + input + ["-show_streams", "-of", "json"], id: id)
+                    let json = try JSONSerialization.jsonObject(with: probe) as? [String: Any]
+                    let streams = (json?["streams"] as? [[String: Any]] ?? []).filter { $0["codec_type"] as? String == "subtitle" }
+                    let values = try url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
+                    let key = SHA256.hash(data: Data("\(url.path)|\(values.fileSize ?? 0)|\(values.contentModificationDate?.timeIntervalSince1970 ?? 0)".utf8)).map { String(format: "%02x", $0) }.joined()
+                    try FileManager.default.createDirectory(at: self.cacheDirectory, withIntermediateDirectories: true)
+                    var result: [(url: URL, title: String)] = []
+                    for stream in streams.prefix(32) {
+                        try self.check(id)
+                        guard let index = stream["index"] as? Int,
+                              ["subrip", "ass", "ssa", "webvtt", "mov_text"].contains(stream["codec_name"] as? String ?? "") else { continue }
+                        let output = self.cacheDirectory.appendingPathComponent(key + ".embedded.\(index).srt")
+                        if !FileManager.default.fileExists(atPath: output.path) {
+                            let temporary = self.cacheDirectory.appendingPathComponent(UUID().uuidString + ".srt")
+                            defer { try? FileManager.default.removeItem(at: temporary) }
+                            _ = try self.run("ffmpeg", ["-nostdin", "-v", "error", "-y"] + input + ["-map", "0:\(index)", "-c:s", "subrip", temporary.path], id: id)
+                            try self.check(id)
+                            try FileManager.default.moveItem(at: temporary, to: output)
+                        }
+                        let tags = stream["tags"] as? [String: String] ?? [:]
+                        let title = [tags["title"], tags["language"]].compactMap { $0 }.joined(separator: " · ")
+                        result.append((output, "内嵌字幕 \(result.count + 1)" + (title.isEmpty ? "" : " · " + title)))
+                    }
+                    try self.check(id)
+                    continuation.resume(returning: result)
+                } catch { continuation.resume(throwing: error) }
+            }
+        }
+    }
+
     private func prepareSync(_ url: URL, force: Bool, id: UUID, status: @escaping (String) -> Void) throws -> URL {
         try check(id)
         if !force && Self.canDecode(url) { try check(id); return url }
@@ -191,7 +228,10 @@ final class FormatCompatibility {
     func clearCache(keeping current: URL?) {
         let preserved = Set(([current].compactMap { $0 }) + subtitleFiles(for: current))
         let files = (try? FileManager.default.contentsOfDirectory(at: cacheDirectory, includingPropertiesForKeys: nil)) ?? []
-        for file in files where !preserved.contains(file) { try? FileManager.default.removeItem(at: file) }
+        for file in files where !preserved.contains(file) {
+            if current != nil && file.lastPathComponent == "Subtitles" { continue }
+            try? FileManager.default.removeItem(at: file)
+        }
     }
 
     private func pruneCache(keeping current: URL) {

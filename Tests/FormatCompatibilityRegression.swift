@@ -54,13 +54,46 @@ struct FormatCompatibilityRegression {
             try await Task.sleep(nanoseconds: 50_000_000)
         }
         precondition(vm.isPlaying && vm.currentVideoURL == original && vm.playbackMediaURL != original)
+        for _ in 0..<200 {
+            if !vm.embeddedSubtitleFiles.isEmpty { break }
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
         precondition(vm.audioTracks.count == 2 && !vm.subtitleCues.isEmpty)
+        precondition(vm.subtitleTracks.contains { $0.name.hasPrefix("内嵌字幕") })
+        let selectedEmbedded = vm.selectedSubtitleTrack
+        vm.selectedSubtitleTrack = -1
+        precondition(vm.subtitleCues.isEmpty)
+        vm.selectedSubtitleTrack = selectedEmbedded
+        precondition(!vm.subtitleCues.isEmpty)
+        let external = folder.appendingPathComponent("subtitle.srt")
+        vm.handleDroppedFiles([external])
+        precondition(vm.currentVideoURL == original && vm.manualSubtitleURLs.contains(external))
+        vm.subtitlePosition = 0.4; vm.subtitleOpacity = 0.55; vm.subtitleFontSize = 38
+        vm.saveSettings()
+        let restored = PlayerViewModel(defaults: defaults, compatibility: engine)
+        precondition(restored.subtitlePosition == 0.4 && restored.subtitleOpacity == 0.55 && restored.subtitleFontSize == 38)
+        vm.subtitleDelay = 0
+        vm.adjustSubtitleSync(0.1)
+        vm.adjustSubtitleSync(-0.2)
+        precondition(vm.subtitleDelay == -0.1 && vm.subtitleFeedback != nil)
+        print("PASS: embedded selection/off, subtitle-only drop preserves video, appearance persistence and sync adjustment")
         vm.seek(to: 1)
         for _ in 0..<100 {
             if !vm.isScrubbing { break }
             try await Task.sleep(nanoseconds: 20_000_000)
         }
         precondition(abs(vm.currentTime - 1) < 0.2)
+        vm.openFile(url: folder.appendingPathComponent("embedded.mp4"))
+        for _ in 0..<200 {
+            if !vm.isLoading && vm.embeddedSubtitleFiles.count == 2 { break }
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+        precondition(vm.embeddedSubtitleFiles.count == 2)
+        guard let english = vm.subtitleTracks.first(where: { $0.name.contains("eng") }) else { preconditionFailure("Missing embedded language label") }
+        vm.selectedSubtitleTrack = english.id
+        precondition(vm.subtitleCues.first?.text == "Second embedded track")
+        precondition(vm.manualSubtitleURLs.isEmpty)
+        print("PASS: native MP4 embedded tracks, language labels and selection contents")
         vm.openFile(url: folder.appendingPathComponent("vp9-opus.webm"))
         vm.returnToHome()
         try await Task.sleep(nanoseconds: 300_000_000)

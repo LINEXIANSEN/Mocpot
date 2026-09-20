@@ -175,6 +175,16 @@ class PlayerViewModel: NSObject, ObservableObject {
     // Subtitle
     @Published var subtitleEncoding: SubtitleEncoding = .auto { didSet { loadSelectedSubtitle() } }
     @Published var subtitleFontSize: CGFloat = 24
+    @Published var subtitlePosition: Double = 0.05
+    @Published var subtitleOpacity: Double = 1
+    @Published var subtitleStatus: String?
+    @Published var subtitleFeedback: String?
+    var subtitleFeedbackTask: Task<Void, Never>?
+    var manualSubtitleURLs: [URL] = []
+    var embeddedSubtitleFiles: [(url: URL, title: String)] = []
+    var subtitleExtractionTask: Task<Void, Never>?
+    var subtitleExtractor: FormatCompatibility?
+    var subtitleRequestID = UUID()
     @Published var subtitleColor: Color = .white
     @Published var subtitleBackgroundColor: Color = .black
     @Published var showSubtitleBackground: Bool = true
@@ -297,6 +307,12 @@ class PlayerViewModel: NSObject, ObservableObject {
             startPlayback(url: url, mediaURL: playbackMediaURL ?? url)
             return
         }
+        subtitleRequestID = UUID()
+        subtitleExtractionTask?.cancel()
+        subtitleExtractor?.cancel()
+        manualSubtitleURLs = []
+        embeddedSubtitleFiles = []
+        subtitleStatus = nil
         prepareTask?.cancel()
         compatibility.cancel()
         reloadTask?.cancel()
@@ -314,6 +330,9 @@ class PlayerViewModel: NSObject, ObservableObject {
         playbackMediaURL = nil
         videoTitle = url.deletingPathExtension().lastPathComponent
         subtitleCues = []
+        subtitleURLs = []
+        subtitleTracks = []
+        selectedSubtitleTrack = -1
         isPlaying = false
         isLoading = true
         wantsPlayback = true
@@ -397,6 +416,7 @@ class PlayerViewModel: NSObject, ObservableObject {
             return
         }
         let newPlayer = AVPlayer(playerItem: item)
+        newPlayer.appliesMediaSelectionCriteriaAutomatically = false
         newPlayer.allowsExternalPlayback = true
         newPlayer.automaticallyWaitsToMinimizeStalling = true
         newPlayer.volume = Float(volume)
@@ -413,6 +433,7 @@ class PlayerViewModel: NSObject, ObservableObject {
         if !isRebuildingMedia {
             detectVideoType(url: url)
             loadSubtitlesForVideo(url: url)
+            loadEmbeddedSubtitles(url: url)
         }
         setupTimeObserver()
         lastPositionSave = Date()
@@ -425,6 +446,7 @@ class PlayerViewModel: NSObject, ObservableObject {
                     guard self.isLoading else { return }
                     self.isLoading = false
                     self.updateVideoInfo()
+                    if let group = item.asset.mediaSelectionGroup(forMediaCharacteristic: .legible) { item.select(nil, in: group) }
                     if let position = self.reloadPosition {
                         self.reloadPosition = nil
                         self.seek(to: position)
@@ -586,6 +608,12 @@ class PlayerViewModel: NSObject, ObservableObject {
     }
 
     func returnToHome() {
+        subtitleRequestID = UUID()
+        subtitleExtractionTask?.cancel()
+        subtitleExtractor?.cancel()
+        manualSubtitleURLs = []
+        embeddedSubtitleFiles = []
+        subtitleStatus = nil
         cancelOpening()
         playbackMediaURL = nil
         reloadTask?.cancel()

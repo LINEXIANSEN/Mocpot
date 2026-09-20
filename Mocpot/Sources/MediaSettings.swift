@@ -108,8 +108,11 @@ extension PlayerViewModel {
             if matches($0) != matches($1) { return matches($0) }
             return $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending
         }
-        if autoLoadMatchingSubtitles { subtitleURLs += compatibility.subtitleFiles(for: playbackMediaURL) }
-        subtitleTracks = subtitleURLs.enumerated().map { SubtitleTrack(id: $0.offset, name: $0.element.lastPathComponent, language: "外挂字幕") }
+        for url in manualSubtitleURLs + embeddedSubtitleFiles.map(\.url) where !subtitleURLs.contains(url) { subtitleURLs.append(url) }
+        subtitleTracks = subtitleURLs.enumerated().map { entry in
+            let embedded = embeddedSubtitleFiles.first { $0.url == entry.element }
+            return SubtitleTrack(id: entry.offset, name: embedded?.title ?? entry.element.lastPathComponent, language: embedded == nil ? "外挂字幕" : "内嵌字幕")
+        }
         selectedSubtitleTrack = previous.flatMap { subtitleURLs.firstIndex(of: $0) } ?? (subtitleURLs.isEmpty ? -1 : 0)
     }
 
@@ -118,11 +121,66 @@ extension PlayerViewModel {
         panel.allowedFileTypes = ["srt", "vtt", "ass", "ssa"]
         panel.canChooseDirectories = false
         guard currentVideoURL != nil, panel.runModal() == .OK, let url = panel.url else { return }
+        importSubtitle(url)
+    }
+
+    func handleDroppedFiles(_ urls: [URL]) {
+        let subs = urls.filter { ["srt", "vtt", "ass", "ssa"].contains($0.pathExtension.lowercased()) }
+        if let video = urls.first(where: { !subs.contains($0) }) { openFile(url: video) }
+        for subtitle in subs { importSubtitle(subtitle) }
+    }
+
+    func importSubtitle(_ url: URL) {
+        guard currentVideoURL != nil else { subtitleError = "请先打开视频，再拖入字幕。"; return }
+        guard url.isFileURL, ["srt", "vtt", "ass", "ssa"].contains(url.pathExtension.lowercased()),
+              (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true else {
+            subtitleError = "请选择 SRT、WebVTT、ASS 或 SSA 字幕文件。"; return
+        }
+        if !manualSubtitleURLs.contains(url) { manualSubtitleURLs.append(url) }
         if !subtitleURLs.contains(url) {
             subtitleURLs.append(url)
             subtitleTracks.append(SubtitleTrack(id: subtitleURLs.count - 1, name: url.lastPathComponent, language: "外挂字幕"))
         }
         selectedSubtitleTrack = subtitleURLs.firstIndex(of: url) ?? -1
+    }
+
+    func loadEmbeddedSubtitles(url: URL) {
+        subtitleExtractionTask?.cancel()
+        subtitleExtractor?.cancel()
+        let id = UUID()
+        subtitleRequestID = id
+        let extractor = FormatCompatibility(toolsDirectory: compatibility.toolsDirectory,
+            cacheDirectory: compatibility.cacheDirectory.appendingPathComponent("Subtitles"))
+        subtitleExtractor = extractor
+        subtitleStatus = "正在读取内嵌字幕…"
+        subtitleExtractionTask = Task { @MainActor [weak self] in
+            do {
+                let files = try await extractor.extractSubtitles(url)
+                guard let self, !Task.isCancelled, self.subtitleRequestID == id, self.currentVideoURL == url else { return }
+                let previous = self.subtitleURLs.indices.contains(self.selectedSubtitleTrack) ? self.subtitleURLs[self.selectedSubtitleTrack] : nil
+                let wasOff = self.selectedSubtitleTrack == -1 && !self.subtitleTracks.isEmpty
+                self.embeddedSubtitleFiles = files
+                self.discoverSubtitles(for: url)
+                if wasOff { self.selectedSubtitleTrack = -1 }
+                else if let previous, let index = self.subtitleURLs.firstIndex(of: previous) { self.selectedSubtitleTrack = index }
+                self.subtitleStatus = files.isEmpty ? "未发现可用的内嵌文本字幕" : "已读取 \(files.count) 条内嵌文本字幕"
+            } catch {
+                guard let self, !Task.isCancelled, self.subtitleRequestID == id else { return }
+                self.subtitleStatus = "内嵌字幕读取失败，仍可加载外挂字幕。"
+            }
+        }
+    }
+
+    func adjustSubtitleSync(_ amount: Double) {
+        subtitleDelay = max(-60, min(60, ((subtitleDelay + amount) * 10).rounded() / 10))
+        subtitleStatus = String(format: "字幕同步：%+.1f 秒", subtitleDelay)
+        subtitleFeedback = subtitleStatus
+        subtitleFeedbackTask?.cancel()
+        subtitleFeedbackTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            guard !Task.isCancelled else { return }
+            self?.subtitleFeedback = nil
+        }
     }
 
     func loadSelectedSubtitle() {
@@ -217,6 +275,8 @@ extension PlayerViewModel {
     func observeMediaSettings() {
         let changes: [AnyPublisher<Void, Never>] = [
             $audioDelay.dropFirst().map { _ in () }.eraseToAnyPublisher(),
+            $subtitlePosition.dropFirst().map { _ in () }.eraseToAnyPublisher(),
+            $subtitleOpacity.dropFirst().map { _ in () }.eraseToAnyPublisher(),
             $subtitleDelay.dropFirst().map { _ in () }.eraseToAnyPublisher(),
             $subtitleEncoding.dropFirst().map { _ in () }.eraseToAnyPublisher(),
             $subtitleFontSize.dropFirst().map { _ in () }.eraseToAnyPublisher(),
@@ -245,6 +305,8 @@ extension PlayerViewModel {
     }
 
     func saveMediaSettings() {
+        defaults.set(subtitlePosition, forKey: "subtitlePosition")
+        defaults.set(subtitleOpacity, forKey: "subtitleOpacity")
         defaults.set(screenshotDirectory.path, forKey: "screenshotDirectory")
         defaults.set(rightClickAction, forKey: "rightClickAction")
         defaults.set(scrollAction, forKey: "scrollAction")
@@ -262,6 +324,8 @@ extension PlayerViewModel {
     }
 
     func loadMediaSettings() {
+        subtitlePosition = max(0, min(0.8, defaults.object(forKey: "subtitlePosition") as? Double ?? 0.05))
+        subtitleOpacity = max(0, min(1, defaults.object(forKey: "subtitleOpacity") as? Double ?? 1))
         if let path = defaults.string(forKey: "screenshotDirectory") { screenshotDirectory = URL(fileURLWithPath: path, isDirectory: true) }
         rightClickAction = defaults.string(forKey: "rightClickAction") ?? "显示菜单"
         scrollAction = defaults.string(forKey: "scrollAction") ?? "快进/快退"

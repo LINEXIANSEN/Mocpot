@@ -17,5 +17,11 @@ ffmpeg -nostdin -v error -i "$fixture/h264-aac.mp4" -c:v flv -c:a libmp3lame "$f
 ffmpeg -nostdin -v error -i "$fixture/h264-aac.mp4" -c:v copy -c:a ac3 "$fixture/h264-ac3.ts"
 ffmpeg -nostdin -v error -i "$fixture/h264-aac.mp4" -c:v copy -c:a dca -strict -2 "$fixture/h264-dts.mkv"
 ffmpeg -nostdin -v error -i "$fixture/h264-aac.mp4" -c:v hevc_videotoolbox -tag:v hvc1 -c:a copy "$fixture/hevc-aac.mp4"
+cat > "$fixture/second.srt" <<'EOF'
+1
+00:00:00,100 --> 00:00:01,900
+Second embedded track
+EOF
+ffmpeg -nostdin -v error -i "$fixture/h264-aac.mp4" -i "$fixture/subtitle.srt" -i "$fixture/second.srt" -map 0:v -map 0:a -map 1:s -map 2:s -c:v copy -c:a copy -c:s mov_text -metadata:s:s:0 language=zho -metadata:s:s:1 language=eng "$fixture/embedded.mp4"
 xcrun swiftc -swift-version 5 Mocpot/Sources/FormatCompatibility.swift Mocpot/Sources/PlayerViewModel.swift Mocpot/Sources/MediaSettings.swift Mocpot/Sources/PictureInPictureController.swift Tests/FormatCompatibilityRegression.swift -o "$fixture/checks"
 "$fixture/checks" "$fixture" "$helper_dir"

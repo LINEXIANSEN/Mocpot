@@ -95,8 +95,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
             return true
         }
+        if flags == .shift, event.keyCode == 6, vm.currentVideoURL != nil {
+            vm.subtitleDelay = 0
+            vm.adjustSubtitleSync(0)
+            return true
+        }
         guard flags.isEmpty, vm.currentVideoURL != nil else { return false }
         switch event.keyCode {
+        case 6: vm.adjustSubtitleSync(-0.1)
+        case 7: vm.adjustSubtitleSync(0.1)
         case 49, 36: vm.togglePlayPause()
         case 3: vm.toggleFullscreen()
         case 35: vm.togglePiP()

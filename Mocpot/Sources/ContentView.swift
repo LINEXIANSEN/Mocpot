@@ -152,6 +152,9 @@ struct ContentView: View {
                 .padding(24).modifier(PlayerSurface())
             }
         }
+        .alert("字幕提示", isPresented: Binding(get: { viewModel.subtitleError != nil }, set: { if !$0 { viewModel.subtitleError = nil } })) {
+            Button("好", role: .cancel) { viewModel.subtitleError = nil }
+        } message: { Text(viewModel.subtitleError ?? "") }
         .alert("无法播放视频", isPresented: Binding(
             get: { viewModel.playbackError != nil },
             set: { if !$0 { viewModel.playbackError = nil } }
@@ -164,13 +167,23 @@ struct ContentView: View {
     }
 
     func handleDrop(providers: [NSItemProvider]) -> Bool {
-        guard let provider = providers.first else { return false }
-        provider.loadItem(forTypeIdentifier: "public.file-url", options: nil) { item, _ in
-            guard let data = item as? Data,
-                  let url = URL(dataRepresentation: data, relativeTo: nil) else { return }
-            DispatchQueue.main.async {
-                viewModel.openFile(url: url)
+        guard !providers.isEmpty else { return false }
+        let group = DispatchGroup()
+        var urls = [Int: URL]()
+        for (index, provider) in providers.enumerated() {
+            group.enter()
+            provider.loadItem(forTypeIdentifier: "public.file-url", options: nil) { item, _ in
+                let url: URL?
+                if let data = item as? Data { url = URL(dataRepresentation: data, relativeTo: nil) }
+                else { url = item as? URL }
+                DispatchQueue.main.async {
+                    urls[index] = url
+                    group.leave()
+                }
             }
+        }
+        group.notify(queue: .main) {
+            viewModel.handleDroppedFiles(urls.sorted { $0.key < $1.key }.map(\.value))
         }
         return true
     }
@@ -190,6 +203,7 @@ struct PlaybackChrome<Surface: View>: View {
     var body: some View {
         ZStack(alignment: .trailing) {
             surface.scaleEffect(viewModel.videoZoom).clipped()
+            GeometryReader { geometry in
             VStack {
                 Spacer()
                 if !viewModel.activeSubtitleText.isEmpty {
@@ -201,10 +215,13 @@ struct PlaybackChrome<Surface: View>: View {
                         .background(viewModel.showSubtitleBackground ? viewModel.subtitleBackgroundColor.opacity(0.8) : .clear,
                                     in: RoundedRectangle(cornerRadius: 5))
                         .shadow(color: .black.opacity(0.7), radius: 2, y: 1)
+                        .opacity(viewModel.subtitleOpacity)
                         .padding(.horizontal, 32)
-                        .padding(.bottom, controlsVisible || !viewModel.isPlaying || viewModel.isScrubbing || showQuickSettings ? 132 : 28)
+                        .padding(.bottom, max(geometry.size.height * viewModel.subtitlePosition,
+                            controlsVisible || !viewModel.isPlaying || viewModel.isScrubbing || showQuickSettings ? 132 : 12))
                 }
-            }.frame(maxWidth: .infinity).allowsHitTesting(false)
+            }.frame(maxWidth: .infinity, maxHeight: .infinity)
+            }.allowsHitTesting(false)
             VStack {
                 if !viewModel.isFullscreen {
                     TopBar()
@@ -218,6 +235,13 @@ struct PlaybackChrome<Surface: View>: View {
             if showQuickSettings {
                 QuickSettingsPanel(showPanel: $showQuickSettings)
                     .padding(12)
+            }
+        }
+        .overlay(alignment: .top) {
+            if let feedback = viewModel.subtitleFeedback {
+                Text(feedback).font(.callout.monospacedDigit()).foregroundColor(.white)
+                    .padding(10).background(.black.opacity(0.65), in: Capsule())
+                    .padding(.top, 48).allowsHitTesting(false)
             }
         }
         .onContinuousHover { phase in
@@ -458,7 +482,10 @@ struct QuickSettingsPanel: View {
 
                     Group {
                         Text("字幕").font(.subheadline).fontWeight(.semibold).foregroundColor(.accentColor)
-                        QSSlider(label: "字幕延迟", value: $viewModel.subtitleDelay, range: -5...5)
+                        QSSlider(label: "字幕延迟（秒）", value: $viewModel.subtitleDelay, range: -60...60)
+                        SubtitleAppearanceControls()
+                        Text("Z 提前 · X 延后 · ⇧Z 复位").font(.caption).foregroundColor(.secondary)
+                        if let status = viewModel.subtitleStatus { Text(status).font(.caption).foregroundColor(.secondary) }
                         Toggle("字幕背景", isOn: $viewModel.showSubtitleBackground)
                         Picker("字幕", selection: $viewModel.selectedSubtitleTrack) {
                             Text("关闭").tag(-1)

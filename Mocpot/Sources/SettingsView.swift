@@ -258,9 +258,12 @@ struct SubtitleTab: View {
         Form {
             Section("字幕文件") {
                 Picker("当前字幕", selection: $viewModel.selectedSubtitleTrack) {
-                    Text("关闭外挂字幕").tag(-1)
+                    Text("关闭字幕").tag(-1)
                     ForEach(viewModel.subtitleTracks) { track in Text(track.name).tag(track.id) }
                 }
+                if let status = viewModel.subtitleStatus { Text(status).font(.caption).foregroundColor(.secondary) }
+                Text("可直接拖入字幕；内嵌文本字幕会自动列出，图片字幕暂不支持。")
+                    .font(.caption).foregroundColor(.secondary)
                 Button("加载字幕文件…") { viewModel.openSubtitlePanel() }.disabled(viewModel.currentVideoURL == nil)
                 Toggle("自动加载同名字幕", isOn: $viewModel.autoLoadMatchingSubtitles)
                 Toggle("扫描同目录其他字幕", isOn: $viewModel.autoLoadDirectorySubtitles)
@@ -271,12 +274,7 @@ struct SubtitleTab: View {
             Section("字幕显示") {
                 Toggle("显示字幕背景", isOn: $viewModel.showSubtitleBackground)
 
-                HStack {
-                    Text("字体大小：")
-                    Slider(value: $viewModel.subtitleFontSize, in: 12...72, step: 2)
-                    Text("\(Int(viewModel.subtitleFontSize))pt")
-                        .frame(width: 40)
-                }
+                SubtitleAppearanceControls()
 
                 ColorPicker("字幕颜色", selection: $viewModel.subtitleColor)
                 ColorPicker("背景颜色", selection: $viewModel.subtitleBackgroundColor)
@@ -292,8 +290,8 @@ struct SubtitleTab: View {
 
             Section("字幕延迟") {
                 HStack {
-                    Text("字幕延迟：")
-                    Stepper(value: $viewModel.subtitleDelay, in: -5...5, step: 0.1) {
+                    Text("字幕延迟（Z/X ±0.1 秒）：")
+                    Stepper(value: $viewModel.subtitleDelay, in: -60...60, step: 0.1) {
                         Text("\(viewModel.subtitleDelay, specifier: "%.1f") 秒")
                     }
                 }
@@ -349,6 +347,8 @@ struct ControlTab: View {
 
 struct ShortcutTab: View {
     let shortcuts: [(String, String)] = [
+        ("Z / X", "字幕提前 / 延后 0.1 秒"),
+        ("Shift + Z", "重置字幕同步"),
         ("Space / Return", "播放 / 暂停"),
         ("Esc", "停止 / 退出全屏"),
         ("←", "快退 10 秒"),
@@ -470,5 +470,35 @@ struct FeatureItem: View {
             Text(text)
                 .font(.caption)
         }
+    }
+}
+
+struct SubtitleAppearanceControls: View {
+    @EnvironmentObject var viewModel: PlayerViewModel
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("字号")
+                Slider(value: $viewModel.subtitleFontSize, in: 12...72, step: 1).accessibilityLabel("字幕字号")
+                Text("\(Int(viewModel.subtitleFontSize)) pt").monospacedDigit().frame(width: 48)
+            }
+            HStack {
+                Text("位置")
+                Slider(value: $viewModel.subtitlePosition, in: 0...0.8).accessibilityLabel("字幕距底部位置")
+                Text("\(Int(viewModel.subtitlePosition * 100))%").monospacedDigit().frame(width: 48)
+            }
+            HStack {
+                Text("不透明度")
+                Slider(value: $viewModel.subtitleOpacity, in: 0...1).accessibilityLabel("字幕不透明度")
+                Text("\(Int(viewModel.subtitleOpacity * 100))%").monospacedDigit().frame(width: 48)
+            }
+            Text("位置按距底部的比例计算；控制栏出现时自动避让。")
+                .font(.caption).foregroundColor(.secondary)
+            Button("重置字幕显示") {
+                viewModel.subtitleFontSize = 24
+                viewModel.subtitlePosition = 0.05
+                viewModel.subtitleOpacity = 1
+            }
+        }.font(.caption)
     }
 }

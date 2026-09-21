@@ -205,6 +205,42 @@ struct PlaybackRegression {
         precondition(vm.playlist.isEmpty && !vm.isImportingFolder)
         observer.cancel()
         print("PASS: import deduplication and clear during pending import")
+        let folderA = folder.appendingPathComponent("folder-A", isDirectory: true)
+        let folderB = folder.appendingPathComponent("folder-B", isDirectory: true)
+        let emptyFolder = folder.appendingPathComponent("empty", isDirectory: true)
+        for directory in [folderA, folderB, emptyFolder] { try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true) }
+        try FileManager.default.linkItem(at: first, to: folderA.appendingPathComponent("a.mp4"))
+        try FileManager.default.linkItem(at: first, to: folderB.appendingPathComponent("b.mp4"))
+        // Enumerate fixture URLs just as the importer does (macOS aliases /tmp to /private/tmp).
+        let a = try FileManager.default.contentsOfDirectory(at: folderA, includingPropertiesForKeys: nil)[0]
+        let b = try FileManager.default.contentsOfDirectory(at: folderB, includingPropertiesForKeys: nil)[0]
+        vm.importFolder(url: folderA)
+        try await wait("folder A starts playback") { !vm.isImportingFolder && !vm.isLoading && vm.currentVideoURL == a && vm.player != nil }
+        vm.returnToHome()
+        vm.importFolder(url: folderB)
+        try await wait("folder B replaces A after returning home") { !vm.isImportingFolder && !vm.isLoading && vm.currentVideoURL == b && vm.player != nil }
+        precondition(vm.playlist == [b] && vm.currentPlaylistIndex == 0 && vm.playbackError == nil)
+        vm.importFolder(url: folderA)
+        try await wait("switch folder during playback") { !vm.isImportingFolder && !vm.isLoading && vm.currentVideoURL == a }
+        precondition(vm.playlist == [a] && vm.playbackError == nil)
+        vm.importFolder(url: bulk)
+        vm.importFolder(url: folderB)
+        try await wait("latest folder wins") { !vm.isImportingFolder && !vm.isLoading && vm.currentVideoURL == b }
+        try await Task.sleep(nanoseconds: 300_000_000)
+        precondition(vm.playlist == [b] && vm.currentPlaylistIndex == 0)
+        vm.importFolder(url: emptyFolder)
+        try await wait("empty folder clears old queue") { !vm.isImportingFolder }
+        precondition(vm.playlist.isEmpty && vm.currentVideoURL == nil && vm.player == nil && vm.currentPlaylistIndex == -1)
+        vm.importFolder(url: folderA)
+        vm.openFile(url: b)
+        try await wait("explicit video supersedes pending folder") { !vm.isLoading && vm.currentVideoURL == b }
+        try await Task.sleep(nanoseconds: 300_000_000)
+        precondition(vm.currentVideoURL == b && vm.playlist.isEmpty)
+        vm.importFolder(url: folder.appendingPathComponent("missing-folder"))
+        try await wait("unreadable folder reports failure") { !vm.isImportingFolder }
+        precondition(vm.currentVideoURL == b && vm.playbackError != nil)
+        vm.returnToHome()
+        print("PASS: folder replacement after home/during playback, latest request wins, empty/error folders, explicit video supersedes import")
         print("All playback regression checks passed.")
     }
 }

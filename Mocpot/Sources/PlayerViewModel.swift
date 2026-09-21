@@ -307,6 +307,8 @@ class PlayerViewModel: NSObject, ObservableObject {
             startPlayback(url: url, mediaURL: playbackMediaURL ?? url)
             return
         }
+        folderImportID = UUID()
+        isImportingFolder = false
         subtitleRequestID = UUID()
         subtitleExtractionTask?.cancel()
         subtitleExtractor?.cancel()
@@ -880,37 +882,48 @@ class PlayerViewModel: NSObject, ObservableObject {
         let order = folderSortOrder
         let videoAtRequest = currentVideoURL
         Task { @MainActor [weak self] in
-            let files = await Task.detached(priority: .userInitiated) {
-                let accessed = url.startAccessingSecurityScopedResource()
-                defer { if accessed { url.stopAccessingSecurityScopedResource() } }
-                let extensions = Set(["mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "m4v", "mpg", "mpeg", "ts", "mts", "m2ts", "3gp", "ogv"])
-                let keys: Set<URLResourceKey> = [.isRegularFileKey, .creationDateKey]
-                let items = (try? FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: Array(keys), options: [.skipsHiddenFiles])) ?? []
-                let entries = items.compactMap { file -> (url: URL, date: Date)? in
-                    guard extensions.contains(file.pathExtension.lowercased()),
-                          let values = try? file.resourceValues(forKeys: keys), values.isRegularFile == true else { return nil }
-                    return (file, values.creationDate ?? .distantPast)
-                }
-                return entries.sorted { lhs, rhs in
-                    switch order {
-                    case .nameAsc: return lhs.url.lastPathComponent.localizedCaseInsensitiveCompare(rhs.url.lastPathComponent) == .orderedAscending
-                    case .nameDesc: return lhs.url.lastPathComponent.localizedCaseInsensitiveCompare(rhs.url.lastPathComponent) == .orderedDescending
-                    case .dateAsc, .dateDesc:
-                        if lhs.date != rhs.date { return order == .dateAsc ? lhs.date < rhs.date : lhs.date > rhs.date }
-                        return lhs.url.lastPathComponent.localizedStandardCompare(rhs.url.lastPathComponent) == .orderedAscending
-                    case .natural: return lhs.url.lastPathComponent.localizedStandardCompare(rhs.url.lastPathComponent) == .orderedAscending
+            do {
+                let files = try await Task.detached(priority: .userInitiated) {
+                    let accessed = url.startAccessingSecurityScopedResource()
+                    defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+                    let extensions = Set(["mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "m4v", "mpg", "mpeg", "ts", "mts", "m2ts", "3gp", "ogv"])
+                    let keys: Set<URLResourceKey> = [.isRegularFileKey, .creationDateKey]
+                    let items = try FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: Array(keys), options: [.skipsHiddenFiles])
+                    let entries = items.compactMap { file -> (url: URL, date: Date)? in
+                        guard extensions.contains(file.pathExtension.lowercased()),
+                              let values = try? file.resourceValues(forKeys: keys), values.isRegularFile == true else { return nil }
+                        return (file, values.creationDate ?? .distantPast)
                     }
-                }.map(\.url)
-            }.value
-            guard let self, self.folderImportID == id else { return }
-            self.isImportingFolder = false
-            var existing = Set(self.playlist)
-            let additions = files.filter { existing.insert($0).inserted }
-            if !additions.isEmpty { self.playlist.append(contentsOf: additions) }
-            self.currentPlaylistIndex = self.currentVideoURL.flatMap { self.playlist.firstIndex(of: $0) } ?? -1
-            if autoPlay, self.currentVideoURL == videoAtRequest, self.currentPlaylistIndex == -1, let first = self.playlist.first {
-                self.currentPlaylistIndex = 0
-                self.openFile(url: first)
+                    return entries.sorted { lhs, rhs in
+                        switch order {
+                        case .nameAsc: return lhs.url.lastPathComponent.localizedCaseInsensitiveCompare(rhs.url.lastPathComponent) == .orderedAscending
+                        case .nameDesc: return lhs.url.lastPathComponent.localizedCaseInsensitiveCompare(rhs.url.lastPathComponent) == .orderedDescending
+                        case .dateAsc, .dateDesc:
+                            if lhs.date != rhs.date { return order == .dateAsc ? lhs.date < rhs.date : lhs.date > rhs.date }
+                            return lhs.url.lastPathComponent.localizedStandardCompare(rhs.url.lastPathComponent) == .orderedAscending
+                        case .natural: return lhs.url.lastPathComponent.localizedStandardCompare(rhs.url.lastPathComponent) == .orderedAscending
+                        }
+                    }.map(\.url)
+                }.value
+                guard let self, self.folderImportID == id else { return }
+                self.isImportingFolder = false
+                guard self.currentVideoURL == videoAtRequest else { return }
+                // Choosing a folder defines a new queue, including when the folder is empty.
+                if self.playlist != files { self.playlist = files }
+                self.currentPlaylistIndex = self.currentVideoURL.flatMap { files.firstIndex(of: $0) } ?? -1
+                if autoPlay {
+                    if let first = files.first {
+                        self.currentPlaylistIndex = 0
+                        self.openFile(url: first)
+                    } else {
+                        self.returnToHome()
+                        self.playbackError = "所选文件夹中没有支持的视频文件。"
+                    }
+                }
+            } catch {
+                guard let self, self.folderImportID == id else { return }
+                self.isImportingFolder = false
+                self.playbackError = "无法读取所选文件夹：\(error.localizedDescription)"
             }
         }
     }

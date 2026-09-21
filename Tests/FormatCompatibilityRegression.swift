@@ -21,7 +21,7 @@ struct FormatCompatibilityRegression {
             precondition(duration > 1.5 && duration < 3.5)
             if name == "h264-aac.mkv" {
                 precondition(AVURLAsset(url: converted).tracks(withMediaType: .audio).count == 2)
-                let captions = engine.subtitleFiles(for: converted)
+                let captions = try await engine.extractSubtitles(original).map(\.url)
                 precondition(captions.count == 1)
                 let text = try String(contentsOf: captions[0], encoding: .utf8)
                 precondition(text.contains("Test subtitle"))

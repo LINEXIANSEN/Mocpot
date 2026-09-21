@@ -53,6 +53,7 @@ struct PlaylistView: View {
                 Text("播放列表")
                     .font(.headline)
                 Spacer()
+                if viewModel.isImportingFolder { ProgressView().controlSize(.small).help("正在导入文件夹…") }
                 Text("\(viewModel.playlist.count)")
                     .font(.caption).foregroundColor(.secondary)
                     .padding(.horizontal, 6).padding(.vertical, 2)

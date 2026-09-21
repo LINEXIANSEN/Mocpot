@@ -160,7 +160,12 @@ extension PlayerViewModel {
                 let previous = self.subtitleURLs.indices.contains(self.selectedSubtitleTrack) ? self.subtitleURLs[self.selectedSubtitleTrack] : nil
                 let wasOff = self.selectedSubtitleTrack == -1 && !self.subtitleTracks.isEmpty
                 self.embeddedSubtitleFiles = files
-                self.discoverSubtitles(for: url)
+                // External tracks were already discovered at open; do not rescan the directory.
+                for file in files where !self.subtitleURLs.contains(file.url) {
+                    self.subtitleURLs.append(file.url)
+                    self.subtitleTracks.append(SubtitleTrack(id: self.subtitleURLs.count - 1, name: file.title, language: "内嵌字幕"))
+                }
+                if previous == nil && !wasOff && !self.subtitleURLs.isEmpty { self.selectedSubtitleTrack = 0 }
                 if wasOff { self.selectedSubtitleTrack = -1 }
                 else if let previous, let index = self.subtitleURLs.firstIndex(of: previous) { self.selectedSubtitleTrack = index }
                 self.subtitleStatus = files.isEmpty ? "未发现可用的内嵌文本字幕" : "已读取 \(files.count) 条内嵌文本字幕"

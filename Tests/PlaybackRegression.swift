@@ -181,6 +181,30 @@ struct PlaybackRegression {
         precondition(vm.player!.currentItem!.videoComposition == nil)
         print("PASS: audio timeline offsets, selected source track and rendered color adjustment")
         vm.returnToHome()
+        let bulk = first.deletingLastPathComponent().appendingPathComponent("bulk", isDirectory: true)
+        try FileManager.default.createDirectory(at: bulk, withIntermediateDirectories: true)
+        for index in 0..<3000 { FileManager.default.createFile(atPath: bulk.appendingPathComponent("clip-\(index).mp4").path, contents: Data()) }
+        try FileManager.default.createDirectory(at: bulk.appendingPathComponent("directory.mp4"), withIntermediateDirectories: true)
+        vm.clearPlaylist()
+        vm.folderSortOrder = .natural
+        var publications = 0
+        let observer = vm.$playlist.dropFirst().sink { _ in publications += 1 }
+        let start = Date()
+        vm.importFolder(url: bulk, autoPlay: false)
+        precondition(vm.isImportingFolder && vm.playlist.isEmpty)
+        try await wait("background folder import") { !vm.isImportingFolder }
+        precondition(vm.playlist.count == 3000 && publications == 1)
+        precondition(vm.playlist[2].lastPathComponent == "clip-2.mp4")
+        print("PASS: 3000 files imported in \(Date().timeIntervalSince(start))s with one playlist publication")
+        vm.importFolder(url: bulk, autoPlay: false)
+        try await wait("duplicate import") { !vm.isImportingFolder }
+        precondition(vm.playlist.count == 3000 && publications == 1)
+        vm.importFolder(url: bulk, autoPlay: false)
+        vm.clearPlaylist()
+        try await Task.sleep(nanoseconds: 500_000_000)
+        precondition(vm.playlist.isEmpty && !vm.isImportingFolder)
+        observer.cancel()
+        print("PASS: import deduplication and clear during pending import")
         print("All playback regression checks passed.")
     }
 }

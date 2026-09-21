@@ -377,10 +377,7 @@ class PlayerViewModel: NSObject, ObservableObject {
             return
         }
         if autoScanSiblings && !playlist.contains(url) {
-            let extensions = Set(["mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "m4v", "mpg", "mpeg", "ts", "mts", "m2ts", "3gp", "ogv"])
-            let siblings = (try? FileManager.default.contentsOfDirectory(at: url.deletingLastPathComponent(), includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles])) ?? []
-            playlist = siblings.filter { extensions.contains($0.pathExtension.lowercased()) && validateLocalMediaURL($0) }
-                .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
+            importFolder(url: url.deletingLastPathComponent(), autoPlay: false)
         }
         if !isRebuildingMedia {
             reloadTask?.cancel()
@@ -608,6 +605,8 @@ class PlayerViewModel: NSObject, ObservableObject {
     }
 
     func returnToHome() {
+        folderImportID = UUID()
+        isImportingFolder = false
         subtitleRequestID = UUID()
         subtitleExtractionTask?.cancel()
         subtitleExtractor?.cancel()
@@ -784,6 +783,8 @@ class PlayerViewModel: NSObject, ObservableObject {
     }
 
     func clearPlaylist() {
+        folderImportID = UUID()
+        isImportingFolder = false
         playlist.removeAll()
         currentPlaylistIndex = -1
     }
@@ -868,49 +869,49 @@ class PlayerViewModel: NSObject, ObservableObject {
         }
     }
 
-    func importFolder(url: URL) {
+    @Published private(set) var isImportingFolder = false
+    private var folderImportID = UUID()
+
+    func importFolder(url: URL, autoPlay: Bool = true) {
         guard url.isFileURL else { return }
-        let accessed = url.startAccessingSecurityScopedResource()
-        defer { if accessed { url.stopAccessingSecurityScopedResource() } }
-        let videoExtensions = ["mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "m4v", "mpg", "mpeg", "ts", "mts", "m2ts", "3gp", "ogv"]
-
-        guard let items = try? FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: [.creationDateKey, .contentModificationDateKey]) else { return }
-
-        var videoFiles = items.filter {
-            guard videoExtensions.contains($0.pathExtension.lowercased()) else { return false }
-            return validateLocalMediaURL($0)
-        }
-
-        switch folderSortOrder {
-        case .nameAsc:
-            videoFiles.sort { $0.lastPathComponent.localizedCaseInsensitiveCompare($1.lastPathComponent) == .orderedAscending }
-        case .nameDesc:
-            videoFiles.sort { $0.lastPathComponent.localizedCaseInsensitiveCompare($1.lastPathComponent) == .orderedDescending }
-        case .dateAsc:
-            videoFiles.sort { url1, url2 in
-                let d1 = (try? url1.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? .distantPast
-                let d2 = (try? url2.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? .distantPast
-                return d1 < d2
+        let id = UUID()
+        folderImportID = id
+        isImportingFolder = true
+        let order = folderSortOrder
+        let videoAtRequest = currentVideoURL
+        Task { @MainActor [weak self] in
+            let files = await Task.detached(priority: .userInitiated) {
+                let accessed = url.startAccessingSecurityScopedResource()
+                defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+                let extensions = Set(["mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "m4v", "mpg", "mpeg", "ts", "mts", "m2ts", "3gp", "ogv"])
+                let keys: Set<URLResourceKey> = [.isRegularFileKey, .creationDateKey]
+                let items = (try? FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: Array(keys), options: [.skipsHiddenFiles])) ?? []
+                let entries = items.compactMap { file -> (url: URL, date: Date)? in
+                    guard extensions.contains(file.pathExtension.lowercased()),
+                          let values = try? file.resourceValues(forKeys: keys), values.isRegularFile == true else { return nil }
+                    return (file, values.creationDate ?? .distantPast)
+                }
+                return entries.sorted { lhs, rhs in
+                    switch order {
+                    case .nameAsc: return lhs.url.lastPathComponent.localizedCaseInsensitiveCompare(rhs.url.lastPathComponent) == .orderedAscending
+                    case .nameDesc: return lhs.url.lastPathComponent.localizedCaseInsensitiveCompare(rhs.url.lastPathComponent) == .orderedDescending
+                    case .dateAsc, .dateDesc:
+                        if lhs.date != rhs.date { return order == .dateAsc ? lhs.date < rhs.date : lhs.date > rhs.date }
+                        return lhs.url.lastPathComponent.localizedStandardCompare(rhs.url.lastPathComponent) == .orderedAscending
+                    case .natural: return lhs.url.lastPathComponent.localizedStandardCompare(rhs.url.lastPathComponent) == .orderedAscending
+                    }
+                }.map(\.url)
+            }.value
+            guard let self, self.folderImportID == id else { return }
+            self.isImportingFolder = false
+            var existing = Set(self.playlist)
+            let additions = files.filter { existing.insert($0).inserted }
+            if !additions.isEmpty { self.playlist.append(contentsOf: additions) }
+            self.currentPlaylistIndex = self.currentVideoURL.flatMap { self.playlist.firstIndex(of: $0) } ?? -1
+            if autoPlay, self.currentVideoURL == videoAtRequest, self.currentPlaylistIndex == -1, let first = self.playlist.first {
+                self.currentPlaylistIndex = 0
+                self.openFile(url: first)
             }
-        case .dateDesc:
-            videoFiles.sort { url1, url2 in
-                let d1 = (try? url1.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? .distantPast
-                let d2 = (try? url2.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? .distantPast
-                return d1 > d2
-            }
-        case .natural:
-            videoFiles.sort { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
-        }
-
-        for video in videoFiles {
-            if !playlist.contains(video) {
-                playlist.append(video)
-            }
-        }
-
-        if playlist.count > 0 && currentPlaylistIndex == -1 {
-            currentPlaylistIndex = 0
-            openFile(url: playlist[0])
         }
     }
 

@@ -91,6 +91,8 @@ final class FormatCompatibility {
                     let key = SHA256.hash(data: Data("\(url.path)|\(values.fileSize ?? 0)|\(values.contentModificationDate?.timeIntervalSince1970 ?? 0)".utf8)).map { String(format: "%02x", $0) }.joined()
                     try FileManager.default.createDirectory(at: self.cacheDirectory, withIntermediateDirectories: true)
                     var result: [(url: URL, title: String)] = []
+                    var pending: [(temporary: URL, output: URL, index: Int)] = []
+                    defer { for item in pending { try? FileManager.default.removeItem(at: item.temporary) } }
                     for stream in streams.prefix(32) {
                         try self.check(id)
                         guard let index = stream["index"] as? Int,
@@ -98,14 +100,18 @@ final class FormatCompatibility {
                         let output = self.cacheDirectory.appendingPathComponent(key + ".embedded.\(index).srt")
                         if !FileManager.default.fileExists(atPath: output.path) {
                             let temporary = self.cacheDirectory.appendingPathComponent(UUID().uuidString + ".srt")
-                            defer { try? FileManager.default.removeItem(at: temporary) }
-                            _ = try self.run("ffmpeg", ["-nostdin", "-v", "error", "-y"] + input + ["-map", "0:\(index)", "-c:s", "subrip", temporary.path], id: id)
-                            try self.check(id)
-                            try FileManager.default.moveItem(at: temporary, to: output)
+                            pending.append((temporary, output, index))
                         }
                         let tags = stream["tags"] as? [String: String] ?? [:]
                         let title = [tags["title"], tags["language"]].compactMap { $0 }.joined(separator: " · ")
                         result.append((output, "内嵌字幕 \(result.count + 1)" + (title.isEmpty ? "" : " · " + title)))
+                    }
+                    // Demux once for every missing track, rather than reading the movie once per language.
+                    if !pending.isEmpty {
+                        let outputs = pending.flatMap { ["-map", "0:\($0.index)", "-c:s", "subrip", $0.temporary.path] }
+                        _ = try self.run("ffmpeg", ["-nostdin", "-v", "error", "-y"] + input + outputs, id: id)
+                        try self.check(id)
+                        for item in pending { try FileManager.default.moveItem(at: item.temporary, to: item.output) }
                     }
                     try self.check(id)
                     continuation.resume(returning: result)
@@ -116,18 +122,18 @@ final class FormatCompatibility {
 
     private func prepareSync(_ url: URL, force: Bool, id: UUID, status: @escaping (String) -> Void) throws -> URL {
         try check(id)
-        if !force && Self.canDecode(url) { try check(id); return url }
         let fm = FileManager.default
-        guard fm.isExecutableFile(atPath: toolsDirectory.appendingPathComponent("ffmpeg").path),
-              fm.isExecutableFile(atPath: toolsDirectory.appendingPathComponent("ffprobe").path) else {
-            throw Failure(message: "系统无法解码这个文件，且当前应用缺少兼容组件。请安装包含兼容组件的完整版本。")
-        }
-        try fm.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
         let values = try url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
         let identity = "\(url.standardizedFileURL.path)|\(values.fileSize ?? 0)|\(values.contentModificationDate?.timeIntervalSince1970 ?? 0)"
         let key = SHA256.hash(data: Data(identity.utf8)).map { String(format: "%02x", $0) }.joined()
         let cached = cacheDirectory.appendingPathComponent(key + ".mov")
         if fm.fileExists(atPath: cached.path), Self.canDecode(cached) { try check(id); status("使用兼容缓存"); return cached }
+        if !force && Self.canDecode(url) { try check(id); return url }
+        guard fm.isExecutableFile(atPath: toolsDirectory.appendingPathComponent("ffmpeg").path),
+              fm.isExecutableFile(atPath: toolsDirectory.appendingPathComponent("ffprobe").path) else {
+            throw Failure(message: "系统无法解码这个文件，且当前应用缺少兼容组件。请安装包含兼容组件的完整版本。")
+        }
+        try fm.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
         let allowed = "mov,matroska,webm,avi,asf,mpeg,mpegts,flv,ogg,rm,3g2,3gp"
         let input = ["-protocol_whitelist", "file,pipe", "-format_whitelist", allowed, "-i", url.path]
         let probe = try run("ffprobe", ["-v", "error"] + input + ["-show_streams", "-show_format", "-of", "json"], id: id)
@@ -138,10 +144,14 @@ final class FormatCompatibility {
         }
         let duration = ((object["format"] as? [String: Any])?["duration"] as? String).flatMap(Double.init) ?? 0
         let hdr = ["smpte2084", "arib-std-b67"].contains(video["color_transfer"] as? String ?? "")
-        let attempts: [(String, [String])] = [
+        // Known unsupported video codecs cannot benefit from a whole-file MOV copy attempt.
+        let needsVideoEncoding = ["wmv1", "wmv2", "wmv3", "vc1", "flv1", "vp8", "theora"].contains(video["codec_name"] as? String ?? "")
+        let needsAudioEncoding = streams.contains { $0["codec_type"] as? String == "audio" && ["dts", "wmav1", "wmav2", "wmapro", "vorbis"].contains($0["codec_name"] as? String ?? "") }
+        let copyAttempts: [(String, [String])] = [
             ("正在无损转换封装", ["-c", "copy"]),
             ("正在转换音频", ["-c:v", "copy", "-c:a", "aac", "-b:a", "192k"])
-        ] + (hdr ? [] : [("正在转换视频", ["-c:v", "h264_videotoolbox", "-b:v", "12M", "-pix_fmt", "yuv420p", "-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2", "-c:a", "aac", "-b:a", "192k"])])
+        ]
+        let attempts = (needsVideoEncoding ? [] : (needsAudioEncoding ? Array(copyAttempts.dropFirst()) : copyAttempts)) + (hdr ? [] : [("正在转换视频", ["-c:v", "h264_videotoolbox", "-b:v", "12M", "-pix_fmt", "yuv420p", "-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2", "-c:a", "aac", "-b:a", "192k"])])
         for (label, codecs) in attempts {
             try check(id)
             let available = (try? fm.attributesOfFileSystem(forPath: cacheDirectory.path)[.systemFreeSize] as? NSNumber)?.int64Value ?? Int64.max
@@ -162,15 +172,6 @@ final class FormatCompatibility {
                 // Only fully converted and decoded results become reusable cache entries.
                 if fm.fileExists(atPath: cached.path) { try fm.removeItem(at: cached) }
                 try fm.moveItem(at: temp, to: cached)
-                // Text subtitle tracks are extracted beside the cache so playback does not silently lose them.
-                for stream in streams.filter({ $0["codec_type"] as? String == "subtitle" }).prefix(16) {
-                    guard let index = stream["index"] as? Int,
-                          ["subrip", "ass", "ssa", "webvtt", "mov_text"].contains(stream["codec_name"] as? String ?? "") else { continue }
-                    try check(id)
-                    let subtitle = cacheDirectory.appendingPathComponent(key + ".s\(index).srt")
-                    _ = try? run("ffmpeg", ["-nostdin", "-v", "error", "-y"] + input +
-                        ["-map", "0:\(index)", "-c:s", "subrip", subtitle.path], id: id)
-                }
                 try check(id)
                 pruneCache(keeping: cached)
                 return cached
@@ -200,12 +201,17 @@ final class FormatCompatibility {
             if chunk.isEmpty { break }
             data.append(chunk)
             if let progress {
-                if let text = String(data: data, encoding: .utf8) {
-                    for line in text.split(separator: "\n") where line.hasPrefix("out_time_us=") {
-                        if let microseconds = Double(line.dropFirst(12)), microseconds.isFinite, microseconds >= 0 { progress(microseconds / 1_000_000) }
+                // Consume completed lines: replaying the buffer flooded the main queue with stale progress.
+                if let newline = data.lastIndex(of: 10) {
+                    let completed = data.prefix(through: newline)
+                    data = Data(data.suffix(from: data.index(after: newline)))
+                    if let text = String(data: completed, encoding: .utf8) {
+                        for line in text.split(separator: "\n") where line.hasPrefix("out_time_us=") {
+                            if let microseconds = Double(line.dropFirst(12)), microseconds.isFinite, microseconds >= 0 { progress(microseconds / 1_000_000) }
+                        }
                     }
                 }
-                if data.count > 8192 { data = data.suffix(1024) }
+                if data.count > 8192 { data.removeAll(keepingCapacity: true) }
             } else if data.count > 4 * 1024 * 1024 {
                 task.terminate(); task.waitUntilExit()
                 throw Failure(message: "媒体信息过大，无法安全读取。")

@@ -48,6 +48,22 @@ struct PlaybackRegression {
         vm.openFile(url: first)
         try await wait("ready state and finite duration") { !vm.isLoading && vm.duration > 5 && vm.isPlaying }
         precondition(vm.player?.rate == 1.5)
+        vm.isFullscreen = true
+        vm.seekForward(seconds: 2)
+        precondition(vm.isScrubbing && !vm.seekKeepsControlsVisible)
+        try await wait("fullscreen keyboard seek stays unobtrusive") { !vm.isScrubbing }
+        vm.seekBackward(seconds: 1)
+        precondition(!vm.seekKeepsControlsVisible)
+        try await wait("fullscreen backward seek completes") { !vm.isScrubbing }
+        vm.beginScrubbing()
+        precondition(vm.seekKeepsControlsVisible)
+        vm.seek(to: 1)
+        precondition(!vm.isDraggingTimeline && !vm.seekKeepsControlsVisible)
+        try await wait("fullscreen slider drag completes") { !vm.isScrubbing }
+        vm.isFullscreen = false
+        vm.seek(to: 0)
+        precondition(vm.seekKeepsControlsVisible)
+        try await wait("windowed seek retains controls") { !vm.isScrubbing }
         vm.volume = 0.25
         vm.isMuted = true
         precondition(vm.player?.volume == 0.25 && vm.player?.isMuted == true)

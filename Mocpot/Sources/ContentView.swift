@@ -220,7 +220,7 @@ struct PlaybackChrome<Surface: View>: View {
                         .opacity(viewModel.subtitleOpacity)
                         .padding(.horizontal, 32)
                         .padding(.bottom, max(geometry.size.height * viewModel.subtitlePosition,
-                            controlsVisible || !viewModel.isPlaying || viewModel.isScrubbing || showQuickSettings ? 132 : 12))
+                            controlsVisible || !viewModel.isPlaying || viewModel.seekKeepsControlsVisible || showQuickSettings ? 132 : 12))
                 }
             }.frame(maxWidth: .infinity, maxHeight: .infinity)
             }.allowsHitTesting(false)
@@ -231,8 +231,8 @@ struct PlaybackChrome<Surface: View>: View {
                 Spacer()
                 BottomControls(showQuickSettings: $showQuickSettings)
             }
-            .opacity(controlsVisible || !viewModel.isPlaying || viewModel.isScrubbing || showQuickSettings ? 1 : 0)
-            .allowsHitTesting(controlsVisible || !viewModel.isPlaying || viewModel.isScrubbing || showQuickSettings)
+            .opacity(controlsVisible || !viewModel.isPlaying || viewModel.seekKeepsControlsVisible || showQuickSettings ? 1 : 0)
+            .allowsHitTesting(controlsVisible || !viewModel.isPlaying || viewModel.seekKeepsControlsVisible || showQuickSettings)
             .animation(.easeInOut(duration: 0.2), value: controlsVisible)
             if showQuickSettings {
                 QuickSettingsPanel(showPanel: $showQuickSettings)
@@ -251,7 +251,7 @@ struct PlaybackChrome<Surface: View>: View {
         }
         .onAppear { revealControls() }
         .onChange(of: viewModel.isPlaying) { _ in revealControls() }
-        .onChange(of: viewModel.isScrubbing) { _ in revealControls() }
+        .onChange(of: viewModel.seekKeepsControlsVisible) { _ in revealControls() }
         .onChange(of: showQuickSettings) { _ in revealControls() }
         .onDisappear { hideTask?.cancel() }
         .ignoresSafeArea(.all, edges: viewModel.isFullscreen ? .all : [])
@@ -260,7 +260,7 @@ struct PlaybackChrome<Surface: View>: View {
     private func revealControls() {
         controlsVisible = true
         hideTask?.cancel()
-        guard viewModel.isPlaying, !viewModel.isScrubbing, !showQuickSettings else { return }
+        guard viewModel.isPlaying, !viewModel.seekKeepsControlsVisible, !showQuickSettings else { return }
         hideTask = Task { @MainActor in
             // Keep the video unobstructed during playback. Controls reappear as soon
             // as the pointer moves, but fade out quickly when it leaves the player.

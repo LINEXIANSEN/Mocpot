@@ -58,6 +58,16 @@ struct PlaylistView: View {
                     .font(.caption).foregroundColor(.secondary)
                     .padding(.horizontal, 6).padding(.vertical, 2)
                     .background(Color.secondary.opacity(0.2)).cornerRadius(8)
+                Button { viewModel.showPlaylist = false } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 24, height: 24)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("关闭播放列表")
+                .accessibilityLabel("关闭播放列表")
             }.padding(.horizontal, 12).padding(.top, 12)
 
             HStack(spacing: 8) {

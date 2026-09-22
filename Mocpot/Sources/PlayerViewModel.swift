@@ -167,7 +167,11 @@ class PlayerViewModel: NSObject, ObservableObject {
     @Published var showPlaylist: Bool = false
 
     // Scrubbing state
-    @Published var isScrubbing: Bool = false
+    @Published var isScrubbing: Bool = false {
+        didSet { if !isScrubbing { isDraggingTimeline = false } }
+    }
+    @Published private(set) var isDraggingTimeline = false
+    var seekKeepsControlsVisible: Bool { isScrubbing && (!isFullscreen || isDraggingTimeline) }
     @Published var scrubTarget: Double = 0
 
     // A-B Loop
@@ -739,6 +743,7 @@ class PlayerViewModel: NSObject, ObservableObject {
     }
 
     func seek(to time: Double) {
+        isDraggingTimeline = false
         if let directPlayback {
             guard time.isFinite, duration > 0 else { isScrubbing = false; return }
             let target = max(0, min(time, duration))
@@ -769,6 +774,7 @@ class PlayerViewModel: NSObject, ObservableObject {
 
     func beginScrubbing() {
         scrubTarget = currentTime
+        isDraggingTimeline = true
         isScrubbing = true
     }
 

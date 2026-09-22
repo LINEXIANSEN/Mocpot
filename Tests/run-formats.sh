@@ -23,5 +23,9 @@ cat > "$fixture/second.srt" <<'EOF'
 Second embedded track
 EOF
 ffmpeg -nostdin -v error -i "$fixture/h264-aac.mp4" -i "$fixture/subtitle.srt" -i "$fixture/second.srt" -map 0:v -map 0:a -map 1:s -map 2:s -c:v copy -c:a copy -c:s mov_text -metadata:s:s:0 language=zho -metadata:s:s:1 language=eng "$fixture/embedded.mp4"
-xcrun swiftc -swift-version 5 Mocpot/Sources/FormatCompatibility.swift Mocpot/Sources/PlayerViewModel.swift Mocpot/Sources/MediaSettings.swift Mocpot/Sources/PictureInPictureController.swift Tests/FormatCompatibilityRegression.swift -o "$fixture/checks"
+sources=()
+for file in Mocpot/Sources/*.swift; do
+    [[ "$file" == *PotPlayerMacApp.swift ]] || sources+=("$file")
+done
+xcrun swiftc -swift-version 5 -I Vendor/MPV/include "${sources[@]}" Tests/FormatCompatibilityRegression.swift -o "$fixture/checks"
 "$fixture/checks" "$fixture" "$helper_dir"

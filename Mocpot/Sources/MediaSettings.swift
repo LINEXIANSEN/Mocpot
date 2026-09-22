@@ -80,7 +80,7 @@ enum SubtitleParser {
 }
 
 extension PlayerViewModel {
-    var activeSubtitleText: String { subtitleText(at: currentTime) }
+    var activeSubtitleText: String { directSubtitleIDs[selectedSubtitleTrack] != nil && directPlayback != nil ? directSubtitleText : subtitleText(at: currentTime) }
     func subtitleText(at time: Double) -> String {
         let adjusted = time - subtitleDelay
         return subtitleCues.filter { $0.start <= adjusted && adjusted < $0.end }.map(\.text).joined(separator: "\n")
@@ -92,6 +92,7 @@ extension PlayerViewModel {
     }
 
     func discoverSubtitles(for video: URL) {
+        let previousNative = directSubtitleIDs[selectedSubtitleTrack]
         let previous = subtitleURLs.indices.contains(selectedSubtitleTrack) ? subtitleURLs[selectedSubtitleTrack] : nil
         let supported = Set(["srt", "vtt", "ass", "ssa"])
         let stem = video.deletingPathExtension().lastPathComponent
@@ -113,7 +114,8 @@ extension PlayerViewModel {
             let embedded = embeddedSubtitleFiles.first { $0.url == entry.element }
             return SubtitleTrack(id: entry.offset, name: embedded?.title ?? entry.element.lastPathComponent, language: embedded == nil ? "外挂字幕" : "内嵌字幕")
         }
-        selectedSubtitleTrack = previous.flatMap { subtitleURLs.firstIndex(of: $0) } ?? (subtitleURLs.isEmpty ? -1 : 0)
+        appendDirectSubtitleTracks()
+        selectedSubtitleTrack = previousNative.flatMap { native in directSubtitleIDs.first { $0.value == native }?.key } ?? previous.flatMap { subtitleURLs.firstIndex(of: $0) } ?? (subtitleTracks.isEmpty ? -1 : 0)
     }
 
     func openSubtitlePanel() {
@@ -139,7 +141,12 @@ extension PlayerViewModel {
         if !manualSubtitleURLs.contains(url) { manualSubtitleURLs.append(url) }
         if !subtitleURLs.contains(url) {
             subtitleURLs.append(url)
-            subtitleTracks.append(SubtitleTrack(id: subtitleURLs.count - 1, name: url.lastPathComponent, language: "外挂字幕"))
+            if directPlayback != nil {
+                subtitleTracks = subtitleURLs.enumerated().map { SubtitleTrack(id: $0.offset, name: $0.element.lastPathComponent, language: "外挂字幕") }
+            } else {
+                subtitleTracks.append(SubtitleTrack(id: subtitleURLs.count - 1, name: url.lastPathComponent, language: "外挂字幕"))
+            }
+            appendDirectSubtitleTracks()
         }
         selectedSubtitleTrack = subtitleURLs.firstIndex(of: url) ?? -1
     }
@@ -189,6 +196,12 @@ extension PlayerViewModel {
     }
 
     func loadSelectedSubtitle() {
+        if let directPlayback {
+            let id = directSubtitleIDs[selectedSubtitleTrack]
+            directPlayback.set("sid", id.map(String.init) ?? "no")
+            directSubtitleText = ""
+            if id != nil { subtitleCues = []; subtitleError = nil; return }
+        }
         subtitleCues = []; subtitleError = nil
         guard subtitleURLs.indices.contains(selectedSubtitleTrack) else { return }
         let url = subtitleURLs[selectedSubtitleTrack]
@@ -233,6 +246,7 @@ extension PlayerViewModel {
     }
 
     func applyVideoFilters() {
+        if directPlayback != nil { applyDirectSettings(); return }
         guard let item = player?.currentItem else { return }
         let b = brightness, c = contrast, s = saturation, h = hue, sharp = sharpness
         guard [b, c, s, h, sharp].contains(where: { $0 != 0 }) else { item.videoComposition = nil; return }
@@ -275,6 +289,7 @@ extension PlayerViewModel {
     func applyAudioOutput() {
         let available = outputDevices.contains { $0.id == audioOutputDeviceID }
         player?.audioOutputDeviceUniqueID = available ? audioOutputDeviceID : nil
+        directPlayback?.set("audio-device", available ? "coreaudio/" + audioOutputDeviceID : "auto")
     }
 
     func observeMediaSettings() {
@@ -306,7 +321,7 @@ extension PlayerViewModel {
         ]
         mediaSettingsSubscription = Publishers.MergeMany(changes)
             .debounce(for: .milliseconds(250), scheduler: RunLoop.main)
-            .sink { [weak self] in self?.saveSettings() }
+            .sink { [weak self] in self?.saveSettings(); self?.applyDirectSettings() }
     }
 
     func saveMediaSettings() {
@@ -393,4 +408,36 @@ extension PlayerViewModel {
     @objc func menuFullscreen() { toggleFullscreen() }
     @objc func menuPlaylist() { showPlaylist.toggle() }
     @objc func menuSubtitle() { openSubtitlePanel() }
+}
+
+extension PlayerViewModel {
+    func appendDirectSubtitleTracks() {
+        guard directPlayback != nil else { return }
+        directSubtitleIDs = [:]
+        subtitleTracks = Array(subtitleTracks.prefix(subtitleURLs.count))
+        for track in directEmbeddedTracks {
+            let index = subtitleTracks.count
+            directSubtitleIDs[index] = track.id
+            subtitleTracks.append(SubtitleTrack(id: index, name: track.title, language: track.language))
+        }
+    }
+    func applyDirectSettings() {
+        guard let directPlayback else { return }
+        for (key, value) in ["volume": String(volume * 100), "mute": isMuted ? "yes" : "no", "speed": String(playbackSpeed.value),
+                             "audio-delay": String(audioDelay), "sub-delay": String(subtitleDelay), "sub-font-size": String(Double(subtitleFontSize)),
+                             "sub-pos": String((1 - subtitlePosition) * 100), "sub-ass-override": "force",
+                             "brightness": String(brightness * 100), "contrast": String(contrast * 100), "saturation": String(saturation * 100), "hue": String(hue / 1.8)] {
+            directPlayback.set(key, value)
+        }
+        func color(_ color: Color, opacity: Double) -> String {
+            let c = NSColor(color).usingColorSpace(.sRGB) ?? .white
+            return String(format: "#%02X%02X%02X%02X", Int(max(0, min(1, opacity)) * 255), Int(c.redComponent * 255), Int(c.greenComponent * 255), Int(c.blueComponent * 255))
+        }
+        directPlayback.set("sub-color", color(subtitleColor, opacity: subtitleOpacity))
+        directPlayback.set("sub-back-color", color(subtitleBackgroundColor, opacity: showSubtitleBackground ? subtitleOpacity * 0.65 : 0))
+        directPlayback.set("sub-border-color", color(.black, opacity: subtitleOpacity))
+        if directAudioIDs.indices.contains(selectedAudioTrack) { directPlayback.set("aid", String(directAudioIDs[selectedAudioTrack])) }
+        directPlayback.set("vf", sharpness == 0 ? "" : "lavfi=[unsharp=5:5:\(sharpness * 1.5)]")
+        applyAudioOutput()
+    }
 }

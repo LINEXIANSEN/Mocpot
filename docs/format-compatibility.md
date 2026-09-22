@@ -1,32 +1,30 @@
-# Format compatibility in 1.2.2
+# Format compatibility in 1.3.0
 
-A file extension identifies a container, not whether its video/audio codec can be decoded. Mocpot tests a video frame and audio samples through AVFoundation before choosing a playback path.
+Mocpot includes a local-file-only LGPL libmpv/FFmpeg decoder. WebM, MKV, AVI, WMV, FLV and MPEG-TS open without whole-file conversion or intermediate movies. MP4/MOV/M4V/3GP files use AVFoundation when it can decode them; native failures can retry through the bundled decoder.
 
-1. If the system decodes the file, use it directly.
-2. Otherwise, try copying video and all audio tracks into MOV without re-encoding.
-3. If that fails validation, preserve video and encode audio as AAC.
-4. If needed for SDR content, encode H.264 video through VideoToolbox and AAC audio. This is lossy and may take considerable time for large files. HDR that still cannot be decoded is rejected rather than silently converted to incorrect SDR colors.
+Original URLs remain the identity for playlists, history, resume positions and external subtitles. Direct playback supports pause, seek, speed, volume, audio tracks and delay, text subtitles and sync, screenshots, A/B looping and panoramic viewing. Hardware decoding is attempted when available, with software decoding for other codecs. Startup still requires decoder and renderer initialization.
 
-Only successful, decoded results are cached. The source file is never overwritten. Original URLs remain the identity for history, resume positions, playlist entries, VR-name detection and external subtitles. Converted media is used for video rendering, audio timing and screenshots. Text subtitles (SRT/ASS/SSA/WebVTT/mov_text) are extracted when converting; bitmap subtitles (PGS/VobSub), attachments and complex ASS effects are not supported by this text subtitle renderer.
+## Limits
 
-The loading overlay shows preparation progress and can be cancelled. Switching media or returning home cancels obsolete preparation. Stop during preparation cancels autoplay. Cache cleanup is available in General settings and preserves the active media. Older completed cache files are pruned to a 5 GiB budget excluding the current file, which may exceed this budget. Conversion requires free disk space.
-
-The conversion helper has no network protocols. Its input demuxers are allowlisted; remote URLs, HLS/concat playlists and device inputs are not part of this local-file feature. This is not DRM support or a guarantee for damaged media.
+- The released runtime and DMG target Apple Silicon, macOS 13 or later. Intel binaries are not included.
+- System Picture in Picture remains available only through AVFoundation; its button is disabled for direct playback.
+- The text subtitle overlay does not reproduce bitmap subtitles (PGS/VobSub), attached fonts or complex ASS styling.
+- HDR profiles and unusual codecs are not exhaustively validated. This is not DRM support or a guarantee for every file carrying a supported extension.
+- Network protocols, scripts, user configuration, automatic external-file loading and referenced playlists are disabled.
+- Legacy conversion helpers remain a fallback for development builds missing the direct runtime. Complete release bundles use direct decoding for these containers.
 
 ## Verification
 
-`Tests/run-formats.sh` generates small synthetic SDR video/audio fixtures with development FFmpeg, then runs the **bundled** helpers and validates decoding, unchanged source bytes, cache reuse, multiple audio tracks, text subtitle extraction, cancellation and playlist rejection. `Tests/run.sh` verifies playback and settings regressions.
+`Tests/run-formats.sh` creates synthetic SDR fixtures and checks legacy compatibility helpers. `Tests/run-direct.sh <fixture-directory>` plays original fixtures through OpenGL with the conversion helper deliberately unavailable. It verifies CoreAudio output, pause/seek, audio-track switching and delay, embedded/external text subtitles, panoramic view changes, screenshot orientation and a two-minute seek. Source bytes remain unchanged and no conversion cache is created. `Tests/run.sh` covers native playback, settings and folder switching.
 
-| Container and codecs | Native decoding on test Mac | Compatibility path |
-|---|---|---|
-| MP4, H.264 + AAC | Yes | Direct |
-| MKV, H.264 + AAC | No | Remux |
-| AVI, MPEG-4 + MP3 | No | Remux or conversion |
-| WebM, VP9 + Opus | No | Remux or conversion |
-| WMV, WMV2 + WMA2 | No | Conversion |
-| FLV, FLV1 + MP3 | No | Conversion |
-| TS, H.264 + AC-3 | Yes | Direct |
-| MKV, H.264 + DTS | No | Audio conversion |
-| MP4, HEVC + AAC | Yes | Direct |
+| Tested container and codecs | Release playback path |
+|---|---|
+| MP4, H.264 / HEVC + AAC | AVFoundation when decodable |
+| WebM, VP9 + Opus | Bundled direct decoder |
+| MKV, H.264 + AAC / DTS | Bundled direct decoder |
+| AVI, MPEG-4 + MP3 | Bundled direct decoder |
+| WMV, WMV2 + WMA2 | Bundled direct decoder |
+| FLV, FLV1 + MP3 | Bundled direct decoder |
+| TS, H.264 + AC-3 | Bundled direct decoder |
 
-These fixtures exercise specific combinations, not every codec variant, resolution, HDR profile or damaged file. Native support can differ between macOS releases and hardware.
+These tests cover specific combinations, not every resolution, profile or macOS release. Pinned sources, checksums, build instructions and the CoreAudio compatibility patch are documented in [Vendor/MPV](../Vendor/MPV/README.md). Corresponding decoder sources accompany the binary release.

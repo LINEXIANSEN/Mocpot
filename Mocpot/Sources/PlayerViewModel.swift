@@ -102,14 +102,20 @@ struct VideoMetadata {
 
 class PlayerViewModel: NSObject, ObservableObject {
     @Published var player: AVPlayer?
+    @Published var directPlayback: DirectPlayback?
+    var directAudioIDs: [Int] = []
+    var directSubtitleIDs: [Int: Int] = [:]
+    var directEmbeddedTracks: [DirectPlayback.Track] = []
+    @Published var directSubtitleText = ""
+    private var directTracksLoaded = false
     @Published var currentVideoURL: URL?
     @Published var isPlaying = false
     @Published var currentTime: Double = 0
     @Published var duration: Double = 0
-    @Published var volume: Double = 1.0 { didSet { player?.volume = Float(volume) } }
-    @Published var isMuted = false { didSet { player?.isMuted = isMuted } }
+    @Published var volume: Double = 1.0 { didSet { player?.volume = Float(volume); directPlayback?.set("volume", String(volume * 100)) } }
+    @Published var isMuted = false { didSet { player?.isMuted = isMuted; directPlayback?.set("mute", isMuted ? "yes" : "no") } }
     @Published var playbackSpeed: PlaybackSpeed = .normal {
-        didSet { if isPlaying { player?.rate = playbackSpeed.value } }
+        didSet { if isPlaying { player?.rate = playbackSpeed.value }; directPlayback?.set("speed", String(playbackSpeed.value)) }
     }
     @Published var vrMode: VRMode = .none
     @Published var threeDMode: ThreeDMode = .none
@@ -309,6 +315,13 @@ class PlayerViewModel: NSObject, ObservableObject {
         }
         folderImportID = UUID()
         isImportingFolder = false
+        directPlayback?.shutdown()
+        directPlayback = nil
+        directSubtitleIDs = [:]
+        directEmbeddedTracks = []
+        directSubtitleText = ""
+        directAudioIDs = []
+        directTracksLoaded = false
         subtitleRequestID = UUID()
         subtitleExtractionTask?.cancel()
         subtitleExtractor?.cancel()
@@ -346,6 +359,17 @@ class PlayerViewModel: NSObject, ObservableObject {
         prepareTask = Task { @MainActor [weak self] in
             guard let self, !Task.isCancelled else { return }
             do {
+                // Select a direct decoder before doing any whole-file conversion.
+                if MPVLibrary.shared != nil {
+                    let commonContainer = ["mp4", "mov", "m4v", "3gp"].contains(url.pathExtension.lowercased())
+                    var native = false
+                    if !forceCompatibility && commonContainer { native = await Task.detached { FormatCompatibility.canDecode(url) }.value }
+                    guard !Task.isCancelled, self.prepareID == id else { return }
+                    if !native {
+                        try self.startDirectPlayback(url: url)
+                        return
+                    }
+                }
                 let media = try await self.compatibility.prepare(url, force: forceCompatibility) { [weak self] message in
                     DispatchQueue.main.async {
                         guard let self, self.prepareID == id else { return }
@@ -366,11 +390,69 @@ class PlayerViewModel: NSObject, ObservableObject {
     }
 
     func cancelOpening() {
+        directPlayback?.shutdown()
+        directPlayback = nil
         prepareID = UUID()
         prepareTask?.cancel()
         compatibility.cancel()
         isLoading = false
         wantsPlayback = false
+    }
+
+    private func startDirectPlayback(url: URL) throws {
+        let direct = try DirectPlayback(url: url)
+        directPlayback = direct
+        playbackMediaURL = url
+        compatibilityNote = "直接解码 · 无需转码"
+        loadingMessage = "正在打开视频…"
+        videoMetadata = VideoMetadata()
+        clearABLoop()
+        videoZoom = 1
+        selectedAudioTrack = 0
+        currentPlaylistIndex = playlist.firstIndex(of: url) ?? -1
+        loadMetadata(url: url)
+        saveRecentFile(url: url)
+        detectVideoType(url: url)
+        loadSubtitlesForVideo(url: url)
+        if autoScanSiblings && !playlist.contains(url) { importFolder(url: url.deletingLastPathComponent(), autoPlay: false) }
+        direct.onState = { [weak self, weak direct] state in
+            guard let self, let direct, self.directPlayback === direct else { return }
+            if let error = state.error { self.playbackError = error; self.isLoading = false; self.isPlaying = false; return }
+            self.directSubtitleText = state.subtitleText
+            self.duration = state.duration
+            self.videoMetadata.duration = state.duration
+            if self.videoMetadata.width != state.width || self.videoMetadata.height != state.height {
+                self.videoMetadata.width = state.width
+                self.videoMetadata.height = state.height
+                direct.view?.needsDisplay = true
+            }
+            if !self.isScrubbing { self.currentTime = state.time }
+            if state.loaded && !self.directTracksLoaded {
+                self.directTracksLoaded = true
+                self.directAudioIDs = state.audio.map(\.id)
+                self.audioTracks = state.audio.enumerated().map { AudioTrack(id: $0.offset, name: $0.element.title, language: $0.element.language, channelCount: 0) }
+                let off = self.selectedSubtitleTrack == -1 && !self.subtitleTracks.isEmpty
+                self.directEmbeddedTracks = state.subtitles
+                self.appendDirectSubtitleTracks()
+                if self.selectedSubtitleTrack == -1 && !off && !self.subtitleTracks.isEmpty { self.selectedSubtitleTrack = 0 }
+                self.subtitleStatus = state.subtitles.isEmpty ? "未发现内嵌字幕" : "已读取 \(state.subtitles.count) 条内嵌字幕"
+                self.applyDirectSettings()
+            }
+            if state.loaded && self.isLoading && direct.view?.hasVideoFrame == true {
+                self.isLoading = false
+                if self.rememberLastPosition && self.resumePlayback { self.restorePlaybackPosition(url: url) }
+                direct.set("pause", self.wantsPlayback ? "no" : "yes")
+                self.isPlaying = self.wantsPlayback
+            } else if !self.isLoading { self.isPlaying = !state.paused && !state.ended }
+            if self.isABLooping, let a = self.loopPointA, let b = self.loopPointB, state.time >= b { self.seek(to: a) }
+            if Date().timeIntervalSince(self.lastPositionSave) >= 5 { self.persistCurrentPosition(); self.lastPositionSave = Date() }
+            if state.ended {
+                if self.isLooping { self.seek(to: 0); direct.set("pause", "no") }
+                else if self.autoPlayNext && (self.shufflePlayback || self.currentPlaylistIndex + 1 < self.playlist.count) { self.nextTrack() }
+                else { self.wantsPlayback = false; self.isPlaying = false; self.persistCurrentPosition() }
+            }
+        }
+        applyDirectSettings()
     }
 
     private func startPlayback(url: URL, mediaURL: URL) {
@@ -514,6 +596,7 @@ class PlayerViewModel: NSObject, ObservableObject {
     }
 
     func rebuildAudio() {
+        if directPlayback != nil { applyDirectSettings(); return }
         guard !isRebuildingMedia, let url = currentVideoURL else { return }
         reloadTask?.cancel()
         let task = DispatchWorkItem { [weak self] in
@@ -577,6 +660,15 @@ class PlayerViewModel: NSObject, ObservableObject {
     // MARK: - Playback Controls
 
     func togglePlayPause() {
+        if let directPlayback {
+            if isLoading { wantsPlayback.toggle(); return }
+            if !isPlaying, duration > 0 && currentTime >= duration - 0.1 { seek(to: 0) }
+            wantsPlayback = !isPlaying
+            isPlaying = wantsPlayback
+            directPlayback.set("pause", wantsPlayback ? "no" : "yes")
+            if !wantsPlayback { persistCurrentPosition() }
+            return
+        }
         guard let player = player else {
             if !isLoading, let url = currentVideoURL { openFile(url: url) }
             return
@@ -597,6 +689,7 @@ class PlayerViewModel: NSObject, ObservableObject {
     }
 
     func stopPlayback() {
+        directPlayback?.set("pause", "yes")
         if isLoading { cancelOpening() }
         persistCurrentPosition()
         wantsPlayback = false
@@ -607,6 +700,9 @@ class PlayerViewModel: NSObject, ObservableObject {
     }
 
     func returnToHome() {
+        directPlayback?.shutdown()
+        directPlayback = nil
+        directSubtitleIDs = [:]
         folderImportID = UUID()
         isImportingFolder = false
         subtitleRequestID = UUID()
@@ -643,6 +739,14 @@ class PlayerViewModel: NSObject, ObservableObject {
     }
 
     func seek(to time: Double) {
+        if let directPlayback {
+            guard time.isFinite, duration > 0 else { isScrubbing = false; return }
+            let target = max(0, min(time, duration))
+            currentTime = target
+            directPlayback.seek(target)
+            isScrubbing = false
+            return
+        }
         guard time.isFinite, duration > 0, let player else {
             isScrubbing = false
             return
@@ -719,7 +823,7 @@ class PlayerViewModel: NSObject, ObservableObject {
         guard let a = loopPointA, currentTime > a else { return }
         loopPointB = currentTime
         isABLooping = true
-        player?.seek(to: CMTime(seconds: a, preferredTimescale: 600))
+        seek(to: a)
     }
 
     func clearABLoop() {
@@ -731,6 +835,14 @@ class PlayerViewModel: NSObject, ObservableObject {
     // MARK: - Screenshot
 
     func takeScreenshot() {
+        if let view = directPlayback?.view {
+            if let data = view.screenshotPNG() {
+                let file = screenshotDirectory.appendingPathComponent("Mocpot-\(UUID().uuidString).png")
+                do { try data.write(to: file); NSWorkspace.shared.activateFileViewerSelecting([file]) }
+                catch { playbackError = "截图保存失败：\(error.localizedDescription)" }
+            }
+            return
+        }
         guard player != nil, let url = currentVideoURL else { return }
 
         let time = CMTime(seconds: currentTime, preferredTimescale: 600)
@@ -833,10 +945,12 @@ class PlayerViewModel: NSObject, ObservableObject {
     }
     
     func togglePiP() {
+        if directPlayback != nil { return }
         pipController.togglePiP()
     }
     
     func startPiP() {
+        if directPlayback != nil { return }
         pipController.startPiP()
     }
     

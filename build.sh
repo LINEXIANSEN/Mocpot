@@ -21,6 +21,9 @@ fi
 if [ ! -x Vendor/FFmpeg/Helpers/ffmpeg ]; then
     Scripts/build-compatibility-tools.sh || exit 1
 fi
+if [ ! -f Vendor/MPV/DirectPlayback/libmpv.2.dylib ]; then
+    python3 Scripts/build-direct-playback.py || exit 1
+fi
 echo "Building with xcodebuild..."
 xcodebuild -project Mocpot.xcodeproj \
            -scheme Mocpot \

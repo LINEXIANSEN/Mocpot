@@ -4,6 +4,9 @@ cd "$(dirname "$0")"
 if [[ ! -x Vendor/FFmpeg/Helpers/ffmpeg || ! -x Vendor/FFmpeg/Helpers/ffprobe ]]; then
     Scripts/build-compatibility-tools.sh
 fi
+if [[ ! -f Vendor/MPV/DirectPlayback/libmpv.2.dylib ]]; then
+    python3 Scripts/build-direct-playback.py
+fi
 build_dir=$(mktemp -d /tmp/mocpot-release.XXXXXX)
 xcodebuild -project Mocpot.xcodeproj -scheme Mocpot -configuration Release -derivedDataPath "$build_dir" CODE_SIGNING_ALLOWED=NO build
 app="$build_dir/Build/Products/Release/Mocpot.app"
@@ -11,6 +14,9 @@ version=$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$app/Co
 for tool in ffmpeg ffprobe; do
     codesign --force --sign - "$app/Contents/Resources/Helpers/$tool"
     "$app/Contents/Resources/Helpers/$tool" -version >/dev/null
+done
+for library in "$app/Contents/Resources/DirectPlayback/"*.dylib; do
+    codesign --force --sign - "$library"
 done
 codesign --force --deep --sign - "$app"
 codesign --verify --deep --strict "$app"

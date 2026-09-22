@@ -48,7 +48,9 @@ struct ContentView: View {
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
                 } else {
-                    if viewModel.vrMode != .none {
+                    if let direct = viewModel.directPlayback {
+                        DirectPlayerView(playback: direct).id(ObjectIdentifier(direct))
+                    } else if viewModel.vrMode != .none {
                         VRPlayerView()
                             .environmentObject(viewModel)
                     } else if viewModel.threeDMode != .none {
@@ -383,6 +385,8 @@ struct BottomControls: View {
                     }
                     Button("截图（⌘S）") { viewModel.takeScreenshot() }
                     Button("画中画（P）") { viewModel.togglePiP() }
+                        .disabled(viewModel.directPlayback != nil)
+                        .help("系统画中画目前仅支持系统播放器播放的视频")
                     Button("停止播放") { viewModel.stopPlayback() }
                 } label: {
                     Image(systemName: "ellipsis.circle")

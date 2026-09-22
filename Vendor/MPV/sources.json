@@ -1,0 +1,47 @@
+{
+  "mpv": {
+    "archive": "mpv-0.41.0.tar.gz",
+    "url": "https://api.github.com/repos/mpv-player/mpv/tarball/v0.41.0",
+    "sha256": "4f900c91f9fdb36bc6442968775910aa8c0f67dade72a3d51a4b0c2b39af02da"
+  },
+  "ffmpeg": {
+    "archive": "ffmpeg-9.0.2.tar.xz",
+    "url": "https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz",
+    "sha256": "8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e"
+  },
+  "placebo": {
+    "archive": "libplacebo.tar.gz",
+    "url": "https://api.github.com/repos/haasn/libplacebo/tarball/v7.349.0",
+    "sha256": "8808bbd177441cb2725f339b6b4fbd929006be5292c0be17c93102a347726aec"
+  },
+  "vulkan": {
+    "archive": "vulkan-headers.tar.gz",
+    "url": "https://api.github.com/repos/KhronosGroup/Vulkan-Headers/tarball/v1.3.290",
+    "sha256": "e1a753d001bf5ba763023197d20eaa8ea7f2888e8e8c15172ddc34df779f54c8"
+  },
+  "freetype": {
+    "archive": "freetype.tar.gz",
+    "url": "https://api.github.com/repos/freetype/freetype/tarball/VER-2-13-3",
+    "sha256": "9ba6ead83d9a8664a104e464c2c51a6f2aec22c256bec49ee3dbba5cc5cff356"
+  },
+  "fribidi": {
+    "archive": "fribidi.tar.gz",
+    "url": "https://api.github.com/repos/fribidi/fribidi/tarball/v1.0.16",
+    "sha256": "a168d3b2dab4e5096da4e57142cacedb5d57ebbe5c09326a6ce4c615ba4208fd"
+  },
+  "harfbuzz": {
+    "archive": "harfbuzz.tar.gz",
+    "url": "https://api.github.com/repos/harfbuzz/harfbuzz/tarball/11.2.1",
+    "sha256": "35f956aeffbef7e7f4a24e5511d4958015899066ba70d648828ca95585262fba"
+  },
+  "fast_float": {
+    "archive": "fast-float.tar.gz",
+    "url": "https://api.github.com/repos/fastfloat/fast_float/tarball/2b2395f9ac836ffca6404424bcc252bff7aa80e4",
+    "sha256": "0e5d4c787ff9466869520209675df130cb55056892ebffc0ba998db158980c9d"
+  },
+  "libass": {
+    "archive": "libass.tar.gz",
+    "url": "https://api.github.com/repos/libass/libass/tarball/0.17.4",
+    "sha256": "aa21a9251202155228b101a093bb0de455133654f23ac590e5ad1b5abe7907b2"
+  }
+}

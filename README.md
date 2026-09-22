@@ -12,8 +12,8 @@ macOS 全功能视频播放器，支持 3D 和 VR 全景视频播放。
 ## 功能特性
 
 ### 核心播放
-- 系统可解码的文件直接播放；MKV、AVI、WebM、WMV 等不兼容组合使用内置 FFmpeg 在本机换封装或转换编码，首次转换需要等待，原文件不变。
-- 保留多音轨，提取转换文件中的文本字幕；支持进度显示、取消和缓存清理。详见 [格式兼容性与限制](docs/format-compatibility.md)。
+- MP4、MOV 等使用系统播放器；WebM、MKV、AVI、WMV 等使用内置解码器直接播放，无需等待整段视频转码，也不生成转换副本。
+- 支持多音轨切换和内嵌文本字幕选择，无需额外安装播放器或解码器。详见 [格式兼容性与限制](docs/format-compatibility.md)。
 - 硬件加速解码
 - 播放速度调节：0.25x - 4x
 - 循环播放、随机播放
@@ -39,7 +39,7 @@ macOS 全功能视频播放器，支持 3D 和 VR 全景视频播放。
 - 字幕延迟调节
 
 ### 高级功能
-- 画中画模式
+- 画中画模式（系统播放器路径）
 - 截图功能
 - A-B 循环播放
 - 快速设置面板
@@ -62,6 +62,7 @@ cd Mocpot
 
 # 首次构建兼容组件（下载并校验 FFmpeg 源码）
 Scripts/build-compatibility-tools.sh
+python3 Scripts/build-direct-playback.py
 
 # 打开 Xcode 项目
 open Mocpot.xcodeproj
@@ -109,7 +110,7 @@ xcodebuild -project Mocpot.xcodeproj -scheme Mocpot -configuration Release build
 ## 系统要求
 
 - macOS 13.0 (Ventura) 或更高版本
-- 支持 ARM64 (Apple Silicon) 和 x86_64 (Intel)
+- 当前发布的 DMG 和内置直接解码组件适用于 Apple Silicon（ARM64）；未提供 Intel 安装包。
 
 ## 开发
 

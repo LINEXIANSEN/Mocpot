@@ -53,6 +53,7 @@ iOSInjectionProject/
 *.tmp
 *.temp
 *.swp
+__pycache__/
 *~
 
 # App icon source
@@ -60,3 +61,6 @@ AppIcon/
 
 # Rebuilt from pinned FFmpeg source using Scripts/build-compatibility-tools.sh
 Vendor/FFmpeg/Helpers/
+
+# Built standalone direct decoder; sources are pinned by the build script.
+Vendor/MPV/DirectPlayback/

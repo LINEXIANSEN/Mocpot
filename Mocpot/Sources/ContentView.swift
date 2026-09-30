@@ -198,7 +198,19 @@ struct PlaybackChrome<Surface: View>: View {
     @State private var controlsVisible = true
     @State private var showQuickSettings = false
     @State private var hideTask: Task<Void, Never>?
+    @State private var pointerInside = false
+    @State private var cursorHidden = false
     let surface: Surface
+
+    private var shouldHideCursor: Bool {
+        viewModel.isFullscreen && viewModel.isPlaying && pointerInside && !controlsVisible
+            && !viewModel.seekKeepsControlsVisible && !showQuickSettings
+            && !viewModel.showPlaylist && NSApp.isActive
+    }
+
+    private func restoreCursor() {
+        if cursorHidden { NSCursor.unhide(); cursorHidden = false }
+    }
 
     init(@ViewBuilder surface: () -> Surface) { self.surface = surface() }
 
@@ -247,17 +259,33 @@ struct PlaybackChrome<Surface: View>: View {
             }
         }
         .onContinuousHover { phase in
-            if case .active = phase { revealControls() }
+            switch phase {
+            case .active: pointerInside = true; revealControls()
+            case .ended: pointerInside = false; restoreCursor()
+            }
         }
         .onAppear { revealControls() }
         .onChange(of: viewModel.isPlaying) { _ in revealControls() }
         .onChange(of: viewModel.seekKeepsControlsVisible) { _ in revealControls() }
         .onChange(of: showQuickSettings) { _ in revealControls() }
-        .onDisappear { hideTask?.cancel() }
+        .onChange(of: viewModel.isFullscreen) { _ in revealControls() }
+        .onChange(of: viewModel.showPlaylist) { _ in revealControls() }
+        .onChange(of: shouldHideCursor) { hide in
+            if hide && !cursorHidden { NSCursor.hide(); cursorHidden = true }
+            else if !hide { restoreCursor() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.willResignActiveNotification)) { _ in
+            hideTask?.cancel(); pointerInside = false; restoreCursor()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification)) { _ in
+            hideTask?.cancel(); pointerInside = false; restoreCursor()
+        }
+        .onDisappear { hideTask?.cancel(); restoreCursor() }
         .ignoresSafeArea(.all, edges: viewModel.isFullscreen ? .all : [])
     }
 
     private func revealControls() {
+        restoreCursor()
         controlsVisible = true
         hideTask?.cancel()
         guard viewModel.isPlaying, !viewModel.seekKeepsControlsVisible, !showQuickSettings else { return }

@@ -64,6 +64,17 @@ struct PlaybackRegression {
         vm.seek(to: 0)
         precondition(vm.seekKeepsControlsVisible)
         try await wait("windowed seek retains controls") { !vm.isScrubbing }
+        for _ in 0..<6 { vm.seekForward(seconds: 1) }
+        for _ in 0..<2 { vm.seekBackward(seconds: 1) }
+        try await wait("repeated keyboard seeks land on accumulated target") {
+            !vm.isScrubbing && abs((vm.player?.currentTime().seconds ?? 0) - 4) < 0.3
+        }
+        vm.seekForward(seconds: 1)
+        vm.seekForward(seconds: 1)
+        vm.seek(to: 2)
+        try await Task.sleep(nanoseconds: 180_000_000)
+        precondition(abs((vm.player?.currentTime().seconds ?? 0) - 2) < 0.5)
+        print("PASS: explicit seek cancels queued keyboard target")
         vm.volume = 0.25
         vm.isMuted = true
         precondition(vm.player?.volume == 0.25 && vm.player?.isMuted == true)

@@ -22,7 +22,7 @@ struct DirectVideoContainer: NSViewRepresentable {
     }
     func updateNSView(_ view: DirectVideoView, context: Context) {
         view.viewModel = viewModel
-        view.needsDisplay = true
+        view.updatePresentation()
     }
     static func dismantleNSView(_ view: DirectVideoView, coordinator: ()) { view.releaseRenderer() }
 }
@@ -39,6 +39,15 @@ final class DirectVideoView: NSOpenGLView {
     private var pendingClick: DispatchWorkItem?
     private(set) var renderedFrames = 0
     private(set) var hasVideoFrame = false
+    private var presentation: [String] = []
+
+    func updatePresentation() {
+        guard let viewModel else { return }
+        let next = [viewModel.vrMode.rawValue, viewModel.threeDMode.rawValue, viewModel.videoLayout.rawValue]
+        guard next != presentation else { return }
+        presentation = next
+        needsDisplay = true
+    }
 
     init(playback: DirectPlayback) {
         self.playback = playback

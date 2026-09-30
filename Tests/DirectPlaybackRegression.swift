@@ -98,6 +98,12 @@ import AVFoundation
                 vm.seek(to: 80)
                 try await Task.sleep(nanoseconds: 300_000_000)
                 try await wait("long WebM seeks directly to 80 seconds") { abs(vm.currentTime - 80) < 0.2 }
+                for _ in 0..<6 { vm.seekBackward(seconds: 5) }
+                for _ in 0..<2 { vm.seekForward(seconds: 5) }
+                try await Task.sleep(nanoseconds: 400_000_000)
+                let landed = Double(await direct.property("time-pos")) ?? -1
+                precondition(abs(landed - 60) < 0.2)
+                print("PASS: repeated direct seeks land on accumulated target")
             }
             vm.returnToHome()
             precondition(vm.directPlayback == nil)

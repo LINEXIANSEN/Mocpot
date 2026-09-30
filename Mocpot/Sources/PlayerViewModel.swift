@@ -256,6 +256,7 @@ class PlayerViewModel: NSObject, ObservableObject {
     private var endObserver: NSObjectProtocol?
     private var lastPositionSave = Date.distantPast
     private var seekGeneration = 0
+    private var keyboardSeekTask: DispatchWorkItem?
     private var wantsPlayback = false
     private var fullscreenObservers: [NSObjectProtocol] = []
 
@@ -309,6 +310,8 @@ class PlayerViewModel: NSObject, ObservableObject {
     }
 
     func openFile(url: URL, forceCompatibility: Bool = false) {
+        keyboardSeekTask?.cancel()
+        keyboardSeekTask = nil
         guard validateLocalMediaURL(url) else {
             playbackError = "只能打开本地视频文件。"
             return
@@ -394,6 +397,8 @@ class PlayerViewModel: NSObject, ObservableObject {
     }
 
     func cancelOpening() {
+        keyboardSeekTask?.cancel()
+        keyboardSeekTask = nil
         directPlayback?.shutdown()
         directPlayback = nil
         prepareID = UUID()
@@ -422,15 +427,15 @@ class PlayerViewModel: NSObject, ObservableObject {
         direct.onState = { [weak self, weak direct] state in
             guard let self, let direct, self.directPlayback === direct else { return }
             if let error = state.error { self.playbackError = error; self.isLoading = false; self.isPlaying = false; return }
-            self.directSubtitleText = state.subtitleText
-            self.duration = state.duration
-            self.videoMetadata.duration = state.duration
+            if self.directSubtitleText != state.subtitleText { self.directSubtitleText = state.subtitleText }
+            if self.duration != state.duration { self.duration = state.duration }
+            if self.videoMetadata.duration != state.duration { self.videoMetadata.duration = state.duration }
             if self.videoMetadata.width != state.width || self.videoMetadata.height != state.height {
                 self.videoMetadata.width = state.width
                 self.videoMetadata.height = state.height
                 direct.view?.needsDisplay = true
             }
-            if !self.isScrubbing { self.currentTime = state.time }
+            if !self.isScrubbing && self.keyboardSeekTask == nil { self.currentTime = state.time }
             if state.loaded && !self.directTracksLoaded {
                 self.directTracksLoaded = true
                 self.directAudioIDs = state.audio.map(\.id)
@@ -447,7 +452,10 @@ class PlayerViewModel: NSObject, ObservableObject {
                 if self.rememberLastPosition && self.resumePlayback { self.restorePlaybackPosition(url: url) }
                 direct.set("pause", self.wantsPlayback ? "no" : "yes")
                 self.isPlaying = self.wantsPlayback
-            } else if !self.isLoading { self.isPlaying = !state.paused && !state.ended }
+            } else if !self.isLoading {
+                let playing = !state.paused && !state.ended
+                if self.isPlaying != playing { self.isPlaying = playing }
+            }
             if self.isABLooping, let a = self.loopPointA, let b = self.loopPointB, state.time >= b { self.seek(to: a) }
             if Date().timeIntervalSince(self.lastPositionSave) >= 5 { self.persistCurrentPosition(); self.lastPositionSave = Date() }
             if state.ended {
@@ -627,7 +635,7 @@ class PlayerViewModel: NSObject, ObservableObject {
         timeObserverToken = observedPlayer.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self, weak observedPlayer] time in
             guard let self, self.player === observedPlayer, time.seconds.isFinite else { return }
 
-            if !self.isScrubbing {
+            if !self.isScrubbing && self.keyboardSeekTask == nil {
                 self.currentTime = time.seconds
             }
 
@@ -743,6 +751,8 @@ class PlayerViewModel: NSObject, ObservableObject {
     }
 
     func seek(to time: Double) {
+        keyboardSeekTask?.cancel()
+        keyboardSeekTask = nil
         isDraggingTimeline = false
         if let directPlayback {
             guard time.isFinite, duration > 0 else { isScrubbing = false; return }
@@ -773,6 +783,8 @@ class PlayerViewModel: NSObject, ObservableObject {
     }
 
     func beginScrubbing() {
+        keyboardSeekTask?.cancel()
+        keyboardSeekTask = nil
         scrubTarget = currentTime
         isDraggingTimeline = true
         isScrubbing = true
@@ -785,11 +797,27 @@ class PlayerViewModel: NSObject, ObservableObject {
     }
 
     func seekForward(seconds: Double = 10) {
-        seek(to: min(currentTime + seconds, duration))
+        scheduleKeyboardSeek(to: min(currentTime + seconds, duration))
     }
 
     func seekBackward(seconds: Double = 10) {
-        seek(to: max(currentTime - seconds, 0))
+        scheduleKeyboardSeek(to: max(currentTime - seconds, 0))
+    }
+
+    private func scheduleKeyboardSeek(to time: Double) {
+        guard duration > 0, time.isFinite else { return }
+        // Execute the first press immediately; combine key repeats during the
+        // following 100 ms without repeatedly restarting the decoder.
+        if keyboardSeekTask == nil { seek(to: time) }
+        else { currentTime = time; return }
+        let initialTarget = currentTime
+        let task = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.keyboardSeekTask = nil
+            if self.currentTime != initialTarget { self.seek(to: self.currentTime) }
+        }
+        keyboardSeekTask = task
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: task)
     }
 
     func seekPercentage(_ percentage: Double) {

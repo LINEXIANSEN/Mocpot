@@ -81,6 +81,7 @@ struct ContentView: View {
         .overlay(
             RoundedRectangle(cornerRadius: 0)
                 .stroke(isDragOver ? Color.accentColor : Color.clear, lineWidth: 3)
+                .allowsHitTesting(false)
         )
         .toolbar {
             ToolbarItemGroup(placement: .navigation) {

@@ -58,16 +58,8 @@ struct PlaylistView: View {
                     .font(.caption).foregroundColor(.secondary)
                     .padding(.horizontal, 6).padding(.vertical, 2)
                     .background(Color.secondary.opacity(0.2)).cornerRadius(8)
-                Button { viewModel.showPlaylist = false } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 24, height: 24)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .help("关闭播放列表")
-                .accessibilityLabel("关闭播放列表")
+                PlaylistCloseButton { viewModel.showPlaylist = false }
+                    .frame(width: 28, height: 28)
             }.padding(.horizontal, 12).padding(.top, 12)
 
             HStack(spacing: 8) {
@@ -159,11 +151,34 @@ struct PlaylistView: View {
         .foregroundColor(.primary)
         .background(.regularMaterial)
         .background(PlayerPalette(scheme: scheme).surface.opacity(0.62))
-        .overlay(alignment: .leading) { Rectangle().fill(PlayerPalette(scheme: scheme).border).frame(width: 1) }
+        .overlay(alignment: .leading) { Rectangle().fill(PlayerPalette(scheme: scheme).border).frame(width: 1).allowsHitTesting(false) }
         .onAppear { refreshItems() }
         .onChange(of: viewModel.playlist) { _ in refreshItems() }
         .onChange(of: searchText) { _ in refreshItems() }
         .onChange(of: sortOrder) { _ in refreshItems() }
+    }
+}
+
+/// A native button keeps the entire close target clickable inside the sidebar.
+struct PlaylistCloseButton: NSViewRepresentable {
+    let close: () -> Void
+    func makeCoordinator() -> Coordinator { Coordinator(close: close) }
+    func makeNSView(context: Context) -> NSButton {
+        let button = NSButton(image: NSImage(systemSymbolName: "xmark", accessibilityDescription: "关闭播放列表")!,
+                              target: context.coordinator, action: #selector(Coordinator.activate))
+        button.bezelStyle = .inline
+        button.isBordered = false
+        button.imagePosition = .imageOnly
+        button.toolTip = "关闭播放列表"
+        button.setAccessibilityLabel("关闭播放列表")
+        button.identifier = NSUserInterfaceItemIdentifier("playlist.close")
+        return button
+    }
+    func updateNSView(_ button: NSButton, context: Context) { context.coordinator.close = close }
+    final class Coordinator: NSObject {
+        var close: () -> Void
+        init(close: @escaping () -> Void) { self.close = close }
+        @objc func activate() { close() }
     }
 }
 

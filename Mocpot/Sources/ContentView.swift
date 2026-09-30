@@ -19,11 +19,13 @@ struct SimpleVideoPlayer: NSViewRepresentable {
 
     func updateNSView(_ pv: AVPlayerView, context: Context) {
         if pv.player !== player { pv.player = player }
+        let gravity: AVLayerVideoGravity
         switch layout {
-        case .fill, .centerCrop: pv.videoGravity = .resizeAspectFill
-        case .stretch: pv.videoGravity = .resize
-        case .original, .fit: pv.videoGravity = .resizeAspect
+        case .fill, .centerCrop: gravity = .resizeAspectFill
+        case .stretch: gravity = .resize
+        case .original, .fit: gravity = .resizeAspect
         }
+        if pv.videoGravity != gravity { pv.videoGravity = gravity }
     }
 
     static func dismantleNSView(_ pv: AVPlayerView, coordinator: ()) {

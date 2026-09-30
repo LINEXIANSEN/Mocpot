@@ -100,6 +100,10 @@ struct PlaybackRegression {
         vm.persistCurrentPosition()
         let saved = defaults.dictionary(forKey: "playbackPositions") as? [String: Double]
         precondition(abs((saved?[first.absoluteString] ?? 0) - 4) < 0.1)
+        for position in 1...20 { vm.savePlaybackPosition(url: first, position: Double(position), inBackground: true) }
+        vm.savePlaybackPosition(url: first, position: 4)
+        precondition((defaults.dictionary(forKey: "playbackPositions") as? [String: Double])?[first.absoluteString] == 4)
+        print("PASS: queued periodic position saves cannot overwrite the final position")
         vm.openFile(url: second)
         vm.openFile(url: first)
         vm.openFile(url: second)

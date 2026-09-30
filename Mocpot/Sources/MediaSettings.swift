@@ -162,6 +162,14 @@ extension PlayerViewModel {
         subtitleStatus = "正在读取内嵌字幕…"
         subtitleExtractionTask = Task { @MainActor [weak self] in
             do {
+                if ["mp4", "mov", "m4v", "3gp"].contains(url.pathExtension.lowercased()) {
+                    let hasSubtitles = await Task.detached(priority: .utility) {
+                        let asset = AVURLAsset(url: url)
+                        return asset.tracks.contains { $0.mediaType == .subtitle || $0.mediaType == .text || $0.hasMediaCharacteristic(.legible) }
+                    }.value
+                    guard let self, !Task.isCancelled, self.subtitleRequestID == id, self.currentVideoURL == url else { return }
+                    if !hasSubtitles { self.subtitleStatus = "未发现内嵌文本字幕"; return }
+                }
                 let files = try await extractor.extractSubtitles(url)
                 guard let self, !Task.isCancelled, self.subtitleRequestID == id, self.currentVideoURL == url else { return }
                 let previous = self.subtitleURLs.indices.contains(self.selectedSubtitleTrack) ? self.subtitleURLs[self.selectedSubtitleTrack] : nil
@@ -225,6 +233,9 @@ extension PlayerViewModel {
         let tracks = asset.tracks(withMediaType: .audio)
         audioTracks = tracks.enumerated().map { AudioTrack(id: $0.offset, name: "音轨 \($0.offset + 1)", language: $0.element.languageCode ?? "未标记", channelCount: 0) }
         guard !tracks.isEmpty else { return AVPlayerItem(asset: asset) }
+        // Keep the system's file playback path when no track editing is needed.
+        // A composition is only required for track selection or audio retiming.
+        if tracks.count == 1 && audioDelay == 0 { return AVPlayerItem(asset: asset) }
         let composition = AVMutableComposition()
         let total = asset.duration
         guard total.isNumeric, total.seconds > 0 else { return AVPlayerItem(asset: asset) }
@@ -251,13 +262,16 @@ extension PlayerViewModel {
         let b = brightness, c = contrast, s = saturation, h = hue, sharp = sharpness
         guard [b, c, s, h, sharp].contains(where: { $0 != 0 }) else { item.videoComposition = nil; return }
         guard !item.asset.tracks(withMediaType: .video).isEmpty else { return }
+        let context = CIContext(options: [.cacheIntermediates: false])
         item.videoComposition = AVVideoComposition(asset: item.asset) { request in
             var image = request.sourceImage.clampedToExtent()
-                .applyingFilter("CIColorControls", parameters: [kCIInputBrightnessKey: b, kCIInputContrastKey: 1 + c, kCIInputSaturationKey: 1 + s])
-                .applyingFilter("CIHueAdjust", parameters: [kCIInputAngleKey: h * .pi / 180])
+            if b != 0 || c != 0 || s != 0 {
+                image = image.applyingFilter("CIColorControls", parameters: [kCIInputBrightnessKey: b, kCIInputContrastKey: 1 + c, kCIInputSaturationKey: 1 + s])
+            }
+            if h != 0 { image = image.applyingFilter("CIHueAdjust", parameters: [kCIInputAngleKey: h * .pi / 180]) }
             if sharp > 0 { image = image.applyingFilter("CISharpenLuminance", parameters: [kCIInputSharpnessKey: sharp]) }
             if sharp < 0 { image = image.applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: -sharp * 3]) }
-            request.finish(with: image.cropped(to: request.sourceImage.extent), context: nil)
+            request.finish(with: image.cropped(to: request.sourceImage.extent), context: context)
         }
     }
 

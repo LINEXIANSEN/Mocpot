@@ -255,6 +255,7 @@ class PlayerViewModel: NSObject, ObservableObject {
     private var itemObservation: NSKeyValueObservation?
     private var endObserver: NSObjectProtocol?
     private var lastPositionSave = Date.distantPast
+    private let positionSaveQueue = DispatchQueue(label: "com.mocpot.positions", qos: .utility)
     private var seekGeneration = 0
     private var keyboardSeekTask: DispatchWorkItem?
     private var wantsPlayback = false
@@ -457,7 +458,7 @@ class PlayerViewModel: NSObject, ObservableObject {
                 if self.isPlaying != playing { self.isPlaying = playing }
             }
             if self.isABLooping, let a = self.loopPointA, let b = self.loopPointB, state.time >= b { self.seek(to: a) }
-            if Date().timeIntervalSince(self.lastPositionSave) >= 5 { self.persistCurrentPosition(); self.lastPositionSave = Date() }
+            if Date().timeIntervalSince(self.lastPositionSave) >= 5 { self.persistCurrentPosition(inBackground: true); self.lastPositionSave = Date() }
             if state.ended {
                 if self.isLooping { self.seek(to: 0); direct.set("pause", "no") }
                 else if self.autoPlayNext && (self.shufflePlayback || self.currentPlaylistIndex + 1 < self.playlist.count) { self.nextTrack() }
@@ -646,7 +647,7 @@ class PlayerViewModel: NSObject, ObservableObject {
             }
 
             if !self.isScrubbing, Date().timeIntervalSince(self.lastPositionSave) >= 5 {
-                self.persistCurrentPosition()
+                self.persistCurrentPosition(inBackground: true)
                 self.lastPositionSave = Date()
             }
         }
@@ -790,10 +791,10 @@ class PlayerViewModel: NSObject, ObservableObject {
         isScrubbing = true
     }
 
-    func persistCurrentPosition() {
+    func persistCurrentPosition(inBackground: Bool = false) {
         guard rememberLastPosition, let url = currentVideoURL,
               currentTime.isFinite, duration > 0 else { return }
-        savePlaybackPosition(url: url, position: currentTime)
+        savePlaybackPosition(url: url, position: currentTime, inBackground: inBackground)
     }
 
     func seekForward(seconds: Double = 10) {
@@ -1078,10 +1079,17 @@ class PlayerViewModel: NSObject, ObservableObject {
 
     // MARK: - Playback Position
 
-    func savePlaybackPosition(url: URL, position: Double) {
-        var positions = defaults.dictionary(forKey: "playbackPositions") as? [String: Double] ?? [:]
-        positions[url.absoluteString] = position
-        defaults.set(positions, forKey: "playbackPositions")
+    func savePlaybackPosition(url: URL, position: Double, inBackground: Bool = false) {
+        let defaults = defaults
+        let save = {
+            var positions = defaults.dictionary(forKey: "playbackPositions") as? [String: Double] ?? [:]
+            positions[url.absoluteString] = position
+            defaults.set(positions, forKey: "playbackPositions")
+        }
+        // Periodic history serialization must not block playback/UI. Final saves
+        // use the same queue so an older periodic write cannot overwrite them.
+        if inBackground { positionSaveQueue.async(execute: save) }
+        else { positionSaveQueue.sync(execute: save) }
     }
 
     func restorePlaybackPosition(url: URL) {

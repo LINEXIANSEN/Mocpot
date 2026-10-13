@@ -115,9 +115,13 @@ final class DirectVideoView: NSOpenGLView {
             glFramebufferTexture2D(GLenum(GL_FRAMEBUFFER), GLenum(GL_COLOR_ATTACHMENT0), GLenum(GL_TEXTURE_2D), texture, 0)
         }
         var fbo = mpv_opengl_fbo(fbo: Int32(framebuffer), w: Int32(tw), h: Int32(th), internal_format: GL_RGBA8)
+        var blockForTarget: Int32 = 0
         withUnsafeMutablePointer(to: &fbo) { pointer in
-            var params = [mpv_render_param(type: MPV_RENDER_PARAM_OPENGL_FBO, data: pointer), mpv_render_param()]
-            _ = playback.api.render(renderer, &params)
+            withUnsafeMutablePointer(to: &blockForTarget) { timing in
+                var params = [mpv_render_param(type: MPV_RENDER_PARAM_OPENGL_FBO, data: pointer),
+                              mpv_render_param(type: MPV_RENDER_PARAM_BLOCK_FOR_TARGET_TIME, data: timing), mpv_render_param()]
+                _ = playback.api.render(renderer, &params)
+            }
         }
         glBindFramebuffer(GLenum(GL_FRAMEBUFFER), 0)
         glViewport(0, 0, GLsizei(width), GLsizei(height))

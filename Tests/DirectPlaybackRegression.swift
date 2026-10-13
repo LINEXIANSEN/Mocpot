@@ -35,6 +35,8 @@ import AVFoundation
             vm.openFile(url: url)
             try await wait("\(name) uses direct engine") { vm.directPlayback != nil || vm.playbackError != nil }
             guard let direct = vm.directPlayback else { throw FormatCompatibility.Failure(message: vm.playbackError ?? "Missing direct player") }
+            let timingOffset = await direct.property("options/video-timing-offset")
+            precondition(Double(timingOffset) == 0)
             let view = DirectVideoView(playback: direct)
             view.viewModel = vm
             window.contentView = view

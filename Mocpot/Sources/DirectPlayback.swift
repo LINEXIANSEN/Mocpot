@@ -79,6 +79,9 @@ final class DirectPlayback {
             _ = api.option(handle, key, value)
         }
         if ["ts", "mts", "m2ts"].contains(url.pathExtension.lowercased()) { _ = api.option(handle, "hr-seek-demuxer-offset", "2") }
+        // Rendering happens in AppKit's display pass. Schedule at presentation
+        // time rather than making that pass wait for an early video deadline.
+        _ = api.option(handle, "video-timing-offset", "0")
         guard api.initialize(handle) >= 0 else { api.terminate(handle); throw FormatCompatibility.Failure(message: "直接播放组件初始化失败。") }
     }
 

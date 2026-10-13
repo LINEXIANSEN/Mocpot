@@ -36,15 +36,24 @@ final class TestWindow: NSWindow {
                 vm.isFullscreen = fullscreen
                 vm.currentVideoURL = playing ? item : nil
                 vm.isPlaying = playing
-                for _ in 0..<2 {
+                for attempt in 0..<10 {
                     vm.showPlaylist = true
                     RunLoop.main.run(until: Date().addingTimeInterval(0.3))
                     host.layoutSubtreeIfNeeded()
                     guard let button = closeButton(host) else { fatalError("Missing close button") }
-                    // Exercise the real native target/action and subsequent SwiftUI
-                    // removal. Physical pointer routing requires a foreground UI test.
                     precondition(button.isEnabled && !button.isHiddenOrHasHiddenAncestor)
-                    button.performClick(nil)
+                    precondition(button.acceptsFirstMouse(for: nil))
+                    // Deliver mouse-down to the actual control while the clock
+                    // changes; no mouse-up is needed to dismiss it.
+                    vm.currentTime = Double(attempt)
+                    if attempt % 2 == 0 {
+                        let event = NSEvent.mouseEvent(with: .leftMouseDown, location: .zero,
+                            modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                            windowNumber: window.windowNumber, context: nil, eventNumber: attempt,
+                            clickCount: 1, pressure: 1)!
+                        button.mouseDown(with: event)
+                    } else { button.performClick(nil) }
+                    precondition(!vm.showPlaylist)
                     RunLoop.main.run(until: Date().addingTimeInterval(0.3))
                     precondition(!vm.showPlaylist && closeButton(host) == nil)
                     precondition(vm.playlist == [item] && vm.currentVideoURL == (playing ? item : nil))

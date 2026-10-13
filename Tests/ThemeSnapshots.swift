@@ -42,7 +42,7 @@ struct ThemeSnapshots {
                 ("subtitle-settings", AnyView(ScrollView { SubtitleTab() }), CGSize(width: 660, height: 580)),
                 ("audio-settings", AnyView(AudioTab()), CGSize(width: 660, height: 580)),
                 ("subtitles", AnyView(PlaybackChrome { Color.black }), CGSize(width: 1000, height: 700)),
-                ("playlist", AnyView(PlaylistView()), CGSize(width: 280, height: 600)),
+                ("playlist", AnyView(PlaylistView(viewModel: vm)), CGSize(width: 280, height: 600)),
                 ("playlist-rows", AnyView(VStack {
                     PlaylistItemView(url: vm.recentFiles[0], isSelected: true)
                     PlaylistItemView(url: vm.recentFiles[1], isSelected: false)

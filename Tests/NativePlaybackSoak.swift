@@ -1,6 +1,7 @@
 import AppKit
 import AVKit
 import QuartzCore
+import SwiftUI
 
 @main struct NativePlaybackSoak {
     @MainActor static func main() async throws {
@@ -38,6 +39,17 @@ import QuartzCore
             let player = AVPlayer(playerItem: item)
             player.isMuted = true
             view.player = player
+            if name == "native-file" {
+                vm.player = player
+                vm.currentVideoURL = url
+                vm.isPlaying = true
+                vm.duration = 35
+                vm.playlist = (0..<2000).map { URL(fileURLWithPath: "/tmp/playlist-\($0).mp4") }
+                vm.showPlaylist = true
+                let host = NSHostingView(rootView: ContentView().environmentObject(vm).environmentObject(ThemeManager(defaults: defaults)))
+                window.contentView = host
+                vm.setupTimeObserver()
+            }
             player.play()
             let deadline = Date().addingTimeInterval(10)
             while player.currentTime().seconds < 1 {
@@ -61,6 +73,7 @@ import QuartzCore
             print("\(name): decoded frames=\(frames), max output gap=\(String(format: "%.3f", maximumGap))s, waiting samples=\(waiting)")
             precondition(Double(frames) > measurementSeconds * 40 && player.currentTime().seconds > measurementSeconds)
             player.pause()
+            if name == "native-file" { vm.returnToHome() }
             view.player = nil
         }
         vm.currentVideoURL = url

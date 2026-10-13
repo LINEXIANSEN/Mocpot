@@ -1,8 +1,14 @@
 import SwiftUI
+import Combine
 
-struct PlaylistView: View {
+struct PlaylistView: View, Equatable {
     @Environment(\.colorScheme) private var scheme
-    @EnvironmentObject var viewModel: PlayerViewModel
+    let viewModel: PlayerViewModel
+    static func == (lhs: Self, rhs: Self) -> Bool { lhs.viewModel === rhs.viewModel }
+    @State private var playlist: [URL] = []
+    @State private var currentURL: URL?
+    @State private var importing = false
+    @State private var refreshTask: Task<Void, Never>?
     @State private var searchText = ""
     @State private var selectedItems: Set<URL> = []
     @State private var sortOrder: SortOrder = .orderAdded
@@ -18,33 +24,34 @@ struct PlaylistView: View {
     }
 
     @State private var displayedItems: [URL] = []
-
     private func refreshItems() {
-        var items = viewModel.playlist
-        if !searchText.isEmpty {
-            items = items.filter { $0.lastPathComponent.localizedCaseInsensitiveContains(searchText) }
-        }
-        switch sortOrder {
-        case .orderAdded:
-            break
-        case .nameAsc:
-            items.sort { $0.lastPathComponent.localizedCaseInsensitiveCompare($1.lastPathComponent) == .orderedAscending }
-        case .nameDesc:
-            items.sort { $0.lastPathComponent.localizedCaseInsensitiveCompare($1.lastPathComponent) == .orderedDescending }
-        case .dateAsc:
-            items.sort { url1, url2 in
-                let d1 = (try? url1.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? .distantPast
-                let d2 = (try? url2.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? .distantPast
-                return d1 < d2
+        refreshTask?.cancel()
+        let files = playlist, query = searchText, order = sortOrder
+        refreshTask = Task { @MainActor in
+            let worker = Task.detached(priority: .utility) {
+                var items = files.filter { query.isEmpty || $0.lastPathComponent.localizedCaseInsensitiveContains(query) }
+                switch order {
+                case .orderAdded: break
+                case .nameAsc: items.sort { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
+                case .nameDesc: items.sort { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedDescending }
+                case .dateAsc, .dateDesc:
+                    var dates: [URL: Date] = [:]
+                    for url in items {
+                        if Task.isCancelled { return [URL]() }
+                        dates[url] = (try? url.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? .distantPast
+                    }
+                    items.sort {
+                        let a = dates[$0]!, b = dates[$1]!
+                        if a == b { return $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
+                        return order == .dateAsc ? a < b : a > b
+                    }
+                }
+                return items
             }
-        case .dateDesc:
-            items.sort { url1, url2 in
-                let d1 = (try? url1.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? .distantPast
-                let d2 = (try? url2.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? .distantPast
-                return d1 > d2
-            }
+            let result = await withTaskCancellationHandler(operation: { await worker.value }, onCancel: { worker.cancel() })
+            guard !Task.isCancelled else { return }
+            displayedItems = result
         }
-        displayedItems = items
     }
 
     var body: some View {
@@ -53,8 +60,8 @@ struct PlaylistView: View {
                 Text("播放列表")
                     .font(.headline)
                 Spacer()
-                if viewModel.isImportingFolder { ProgressView().controlSize(.small).help("正在导入文件夹…") }
-                Text("\(viewModel.playlist.count)")
+                if importing { ProgressView().controlSize(.small).help("正在导入文件夹…") }
+                Text("\(playlist.count)")
                     .font(.caption).foregroundColor(.secondary)
                     .padding(.horizontal, 6).padding(.vertical, 2)
                     .background(Color.secondary.opacity(0.2)).cornerRadius(8)
@@ -101,7 +108,7 @@ struct PlaylistView: View {
 
             List(selection: $selectedItems) {
                 ForEach(displayedItems, id: \.self) { url in
-                    PlaylistItemView(url: url, isSelected: viewModel.currentVideoURL == url)
+                    PlaylistItemView(url: url, isSelected: currentURL == url)
                         .tag(url)
                         .onTapGesture(count: 2) { viewModel.playURL(url) }
                         .contextMenu {
@@ -152,8 +159,10 @@ struct PlaylistView: View {
         .background(.regularMaterial)
         .background(PlayerPalette(scheme: scheme).surface.opacity(0.62))
         .overlay(alignment: .leading) { Rectangle().fill(PlayerPalette(scheme: scheme).border).frame(width: 1).allowsHitTesting(false) }
-        .onAppear { refreshItems() }
-        .onChange(of: viewModel.playlist) { _ in refreshItems() }
+        .onReceive(viewModel.$playlist.removeDuplicates().receive(on: DispatchQueue.main)) { playlist = $0; refreshItems() }
+        .onReceive(viewModel.$currentVideoURL.removeDuplicates().receive(on: DispatchQueue.main)) { currentURL = $0 }
+        .onReceive(viewModel.$isImportingFolder.removeDuplicates().receive(on: DispatchQueue.main)) { importing = $0 }
+        .onDisappear { refreshTask?.cancel() }
         .onChange(of: searchText) { _ in refreshItems() }
         .onChange(of: sortOrder) { _ in refreshItems() }
     }
@@ -164,7 +173,7 @@ struct PlaylistCloseButton: NSViewRepresentable {
     let close: () -> Void
     func makeCoordinator() -> Coordinator { Coordinator(close: close) }
     func makeNSView(context: Context) -> NSButton {
-        let button = NSButton(image: NSImage(systemSymbolName: "xmark", accessibilityDescription: "关闭播放列表")!,
+        let button = PlaylistDismissButton(image: NSImage(systemSymbolName: "xmark", accessibilityDescription: "关闭播放列表")!,
                               target: context.coordinator, action: #selector(Coordinator.activate))
         button.bezelStyle = .inline
         button.isBordered = false
@@ -179,6 +188,17 @@ struct PlaylistCloseButton: NSViewRepresentable {
         var close: () -> Void
         init(close: @escaping () -> Void) { self.close = close }
         @objc func activate() { close() }
+    }
+}
+
+final class PlaylistDismissButton: NSButton {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override var mouseDownCanMoveWindow: Bool { false }
+    override func mouseDown(with event: NSEvent) {
+        // Close on press, before a playback/layout update can move the release
+        // target or enter AppKit's synchronous button-tracking loop.
+        guard isEnabled else { return }
+        _ = sendAction(action, to: target)
     }
 }
 

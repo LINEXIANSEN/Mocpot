@@ -2,10 +2,13 @@ import AVFoundation
 import AVKit
 import SwiftUI
 
-struct SimpleVideoPlayer: NSViewRepresentable {
-    @EnvironmentObject var viewModel: PlayerViewModel
+struct SimpleVideoPlayer: NSViewRepresentable, Equatable {
+    let viewModel: PlayerViewModel
     let player: AVPlayer
     var layout: VideoLayout = .fit
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.player === rhs.player && lhs.viewModel === rhs.viewModel && lhs.layout == rhs.layout
+    }
 
     func makeNSView(context: Context) -> AVPlayerView {
         let pv = InteractivePlayerView()
@@ -70,7 +73,7 @@ struct ContentView: View {
             }
 
             if viewModel.showPlaylist {
-                PlaylistView()
+                PlaylistView(viewModel: viewModel).equatable()
                     .frame(width: 280)
                     .transition(.move(edge: .trailing))
             }
@@ -309,7 +312,7 @@ struct StandardPlayerView: View {
             ZStack {
                 Color.black
                 if let player = viewModel.player {
-                    SimpleVideoPlayer(player: player, layout: viewModel.videoLayout)
+                    SimpleVideoPlayer(viewModel: viewModel, player: player, layout: viewModel.videoLayout).equatable()
                         .onAppear { viewModel.setupPiP() }
                         .onChange(of: viewModel.currentVideoURL) { _ in viewModel.setupPiP() }
                 }

@@ -12,25 +12,25 @@ struct ThreeDPlayerView: View {
                 switch viewModel.threeDMode {
                 case .sideBySide:
                     HStack(spacing: 0) {
-                        SimpleVideoPlayer(player: player).clipped()
+                        SimpleVideoPlayer(viewModel: viewModel, player: player).equatable().clipped()
                         Color.white.frame(width: 2)
-                        SimpleVideoPlayer(player: player).clipped()
+                        SimpleVideoPlayer(viewModel: viewModel, player: player).equatable().clipped()
                     }
                 case .overUnder:
                     GeometryReader { geo in
                         VStack(spacing: 0) {
-                            SimpleVideoPlayer(player: player).frame(height: geo.size.height / 2).clipped()
+                            SimpleVideoPlayer(viewModel: viewModel, player: player).equatable().frame(height: geo.size.height / 2).clipped()
                             Color.white.frame(height: 2)
-                            SimpleVideoPlayer(player: player).frame(height: geo.size.height / 2).clipped()
+                            SimpleVideoPlayer(viewModel: viewModel, player: player).equatable().frame(height: geo.size.height / 2).clipped()
                         }
                     }
                 case .anaglyphRedCyan, .anaglyphYellowBlue:
                     ZStack {
-                        SimpleVideoPlayer(player: player).allowsHitTesting(false)
-                        SimpleVideoPlayer(player: player).blendMode(.multiply).opacity(0.7)
+                        SimpleVideoPlayer(viewModel: viewModel, player: player).equatable().allowsHitTesting(false)
+                        SimpleVideoPlayer(viewModel: viewModel, player: player).equatable().blendMode(.multiply).opacity(0.7)
                     }
                 default:
-                    SimpleVideoPlayer(player: player)
+                    SimpleVideoPlayer(viewModel: viewModel, player: player).equatable()
                 }
             }
         }
